@@ -1,0 +1,13 @@
+[package]
+name = "icfpc2020"
+version = "0.1.0"
+authors = []
+edition = "2018"
+
+[[bin]]
+name = "solution"
+path = "src/main.rs"
+
+[dependencies]
+isahc = "0.9"
+openssl = { version = "0.10", features = ["vendored"] }
