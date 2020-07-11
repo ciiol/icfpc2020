@@ -1,2 +1,3 @@
 #!/bin/sh
-# do nothing
+
+chmod +x /solution/target/release/submission
