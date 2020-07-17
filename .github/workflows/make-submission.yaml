@@ -6,6 +6,34 @@ on:
       - master
 
 jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      - name: Setup toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Cache cargo index
+        uses: actions/cache@v2
+        with:
+          path: /usr/share/rust/.cargo/registry
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Cache debug build result
+        uses: actions/cache@v2
+        with:
+          path: target/debug
+          key: ${{ runner.os }}-build-debug-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-build-debug-
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
   build:
     name: Build the solution
     runs-on: ubuntu-latest
@@ -23,13 +51,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-      - name: Cache build result
+      - name: Cache release build result
         uses: actions/cache@v2
         with:
-          path: target
-          key: ${{ runner.os }}-build-${{ hashFiles('Cargo.lock') }}
+          path: target/release
+          key: ${{ runner.os }}-build-release-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-build-
+            ${{ runner.os }}-build-release-
       - name: Build
         uses: actions-rs/cargo@v1
         with:
@@ -42,7 +70,7 @@ jobs:
           path: target/release/submission
   push:
     name: Push to the submission branch
-    needs: build
+    needs: [build, test]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout submission branch

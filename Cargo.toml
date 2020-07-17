@@ -9,5 +9,7 @@ name = "submission"
 path = "src/main.rs"
 
 [dependencies]
+regex = "1"
+lazy_static = "1.4.0"
 isahc = "0.9"
 openssl = { version = "0.10", features = ["vendored"] }
