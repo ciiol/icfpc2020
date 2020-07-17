@@ -1,7 +1,9 @@
+pub type Address = usize;
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Op {
     Num(i64),     // message #1
-    Var(usize),   // message #8
+    Var(Address), // message #8
     Ap,           // message #17
     Eq,           // message #4
     Inc,          // message #5
@@ -26,9 +28,6 @@ pub enum Op {
     Cdr,          // message #27
     Nil,          // message #28
     IsNil,        // message #29
-    LBracket,     // message #30
-    RBracket,     // message #30
-    Comma,        // message #30
     Vec,          // message #31
     Draw,         // message #32
     Chkb,         // message #33

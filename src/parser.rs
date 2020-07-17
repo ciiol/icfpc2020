@@ -8,7 +8,7 @@ pub fn parse(text: &str) -> Vec<Op> {
 fn decode(token: &str) -> Op {
     lazy_static! {
         static ref NUMBERS_RE: Regex = Regex::new(r"^-?\d+$").unwrap();
-        static ref VARIABLES_RE: Regex = Regex::new(r"^x(\d+)$").unwrap();
+        static ref VARIABLES_RE: Regex = Regex::new(r"^:(\d+)$").unwrap();
     }
     if NUMBERS_RE.is_match(token) {
         return Op::Num(token.parse().unwrap());
@@ -18,7 +18,7 @@ fn decode(token: &str) -> Op {
     }
     match token {
         "ap" => Op::Ap,
-        "eq" => Op::Eq,
+        "=" => Op::Eq,
         "inc" => Op::Inc,
         "dec" => Op::Dec,
         "add" => Op::Add,
@@ -42,9 +42,6 @@ fn decode(token: &str) -> Op {
         "nil" => Op::Nil,
         "isnil" => Op::IsNil,
         "vec" => Op::Vec,
-        "(" => Op::LBracket,
-        ")" => Op::RBracket,
-        "," => Op::Comma,
         "draw" => Op::Draw,
         "chkb" => Op::Chkb,
         "multipledraw" => Op::MultipleDraw,
@@ -61,7 +58,7 @@ mod tests {
     #[test]
     fn test_parse() {
         assert_eq!(
-            parse("ap inc x0 1 eq -2"),
+            parse("ap inc :0 1 = -2"),
             vec![Op::Ap, Op::Inc, Op::Var(0), Op::Num(1), Op::Eq, Op::Num(-2)]
         );
     }
@@ -74,9 +71,9 @@ mod tests {
 
     #[test]
     fn test_variable_decoding() {
-        assert_eq!(decode("x0"), Op::Var(0));
-        assert_eq!(decode("x1"), Op::Var(1));
-        assert_eq!(decode("x100500"), Op::Var(100500));
+        assert_eq!(decode(":0"), Op::Var(0));
+        assert_eq!(decode(":1"), Op::Var(1));
+        assert_eq!(decode(":100500"), Op::Var(100500));
     }
 
     #[test]
@@ -192,21 +189,6 @@ mod tests {
     #[test]
     fn test_vec_decode() {
         assert_eq!(decode("vec"), Op::Vec)
-    }
-
-    #[test]
-    fn test_lbracket_decode() {
-        assert_eq!(decode("("), Op::LBracket)
-    }
-
-    #[test]
-    fn test_rbracket_decode() {
-        assert_eq!(decode(")"), Op::RBracket)
-    }
-
-    #[test]
-    fn test_comma_decode() {
-        assert_eq!(decode(","), Op::Comma)
     }
 
     #[test]
