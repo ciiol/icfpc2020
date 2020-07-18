@@ -34,4 +34,5 @@ pub enum Op {
     MultipleDraw, // message #34
     If0,          // message #37
     Interact,     // message #38
+    Galaxy,       // message #42
 }

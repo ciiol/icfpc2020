@@ -80,6 +80,7 @@ pub enum Fun {
     MultipleDraw,
     If0,
     Interact,
+    Galaxy,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -163,6 +164,7 @@ fn build_simple_node(op: &Op) -> Node {
         Op::MultipleDraw => Node::F(Fun::MultipleDraw),
         Op::If0 => Node::F(Fun::If0),
         Op::Interact => Node::F(Fun::Interact),
+        Op::Galaxy => Node::F(Fun::Galaxy),
         Op::Eq => panic!("Don't know how to build eq"),
         Op::Ap => panic!("Don't know how to build ap"),
     }

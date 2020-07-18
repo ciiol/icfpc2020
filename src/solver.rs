@@ -7,7 +7,7 @@ use std::fmt;
 struct Solver {
     memory: HashMap<Address, Value>,
     hidden_memory: Vec<Value>,
-    rules: Vec<Rule>,
+    definitions: HashMap<Fun, Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,7 +30,7 @@ pub enum Ref {
     HiddenRef(Address),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub enum Fun {
     Inc,
     Dec,
@@ -60,6 +60,7 @@ pub enum Fun {
     MultipleDraw,
     If0,
     Interact,
+    Galaxy,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,7 +104,7 @@ impl Solver {
         Self {
             memory: HashMap::new(),
             hidden_memory: Vec::new(),
-            rules: Vec::new(),
+            definitions: HashMap::new(),
         }
     }
 
@@ -144,18 +145,35 @@ impl Solver {
             Rule {
                 left: Value::Ref(r),
                 right: value,
-            } => self.put(r, value)?,
-            rule => self.rules.push(rule),
+            } => self.put(r, value),
+            Rule {
+                left: Value::F(f),
+                right: value,
+            } => {
+                self.definitions.insert(f, value);
+                Ok(())
+            }
+            _ => Err(format!("Don't know how to process rule {}", rule)),
         }
-        Ok(())
     }
 
     pub fn deduce(&mut self, entry: Value, depth: usize) -> Value {
+        if depth == 0 {
+            return entry;
+        }
         match entry {
             Value::Ap(ap) => self.deduce_ap(ap, depth),
             Value::Ref(r) => {
                 let branch = self.get(&r).unwrap().clone();
                 self.deduce(branch, depth - 1)
+            }
+            Value::F(f) => {
+                if let Some(exists) = self.definitions.get(&f) {
+                    let new_entry = exists.clone();
+                    self.deduce(new_entry, depth - 1)
+                } else {
+                    Value::F(f)
+                }
             }
             other => other,
         }
@@ -192,6 +210,7 @@ impl Solver {
             (_, _, Some(Fun::S)) => self.apply_combinator_s(entry),
             (_, _, Some(Fun::C)) => self.apply_combinator_c(entry),
             (_, _, Some(Fun::B)) => self.apply_combinator_b(entry),
+            (_, _, Some(Fun::Cons)) => self.apply_cons(entry),
             _ => (false, entry),
         }
     }
@@ -354,6 +373,40 @@ impl Solver {
             other => (false, other),
         }
     }
+
+    fn apply_cons(&mut self, entry: Value) -> (bool, Value) {
+        match entry {
+            Value::Ap(Ap {
+                f: Some(f),
+                arg: Some(x2),
+            }) => match *f {
+                Value::Ap(Ap {
+                    f: Some(f),
+                    arg: Some(x1),
+                }) => match *f {
+                    Value::Ap(Ap {
+                        f: _,
+                        arg: Some(x0),
+                    }) => {
+                        let ap1 = Value::Ap(Ap {
+                            f: Some(x2),
+                            arg: Some(x0),
+                        });
+                        (
+                            true,
+                            Value::Ap(Ap {
+                                f: Some(Box::new(ap1)),
+                                arg: Some(x1),
+                            }),
+                        )
+                    }
+                    other => (false, other),
+                },
+                other => (false, other),
+            },
+            other => (false, other),
+        }
+    }
 }
 
 impl From<Node> for Rule {
@@ -401,6 +454,7 @@ impl From<Node> for Value {
             Node::F(ast::Fun::MultipleDraw) => Value::F(Fun::MultipleDraw),
             Node::F(ast::Fun::If0) => Value::F(Fun::If0),
             Node::F(ast::Fun::Interact) => Value::F(Fun::Interact),
+            Node::F(ast::Fun::Galaxy) => Value::F(Fun::Galaxy),
             Node::Ap(ap) => Value::Ap(Ap::from(ap)),
             Node::Eq(_) => panic!("Don't know how to convert eq"),
         }
@@ -464,6 +518,7 @@ impl fmt::Display for Fun {
             Fun::MultipleDraw => write!(f, "multipledraw"),
             Fun::If0 => write!(f, "if0"),
             Fun::Interact => write!(f, "interact"),
+            Fun::Galaxy => write!(f, "galaxy"),
         }
     }
 }
@@ -487,6 +542,12 @@ impl fmt::Display for Ap {
             write!(f, " {}", *v)?;
         }
         write!(f, "")
+    }
+}
+
+impl fmt::Display for Rule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} = {}", self.left, self.right)
     }
 }
 
@@ -592,6 +653,33 @@ mod tests {
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
             "ap ap inc mul dec"
+        );
+    }
+
+    #[test]
+    fn test_cons() {
+        let mut solver = with_rules(&vec![":1 = ap ap ap cons inc dec mul"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
+            "ap ap mul inc dec"
+        );
+    }
+
+    #[test]
+    fn test_depth_limit() {
+        let mut solver = with_rules(&vec![":1 = ap :1 :1"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "ap ap ap ap ap :1 :1 :1 :1 :1 :1"
+        );
+    }
+
+    #[test]
+    fn test_simple_definiton() {
+        let mut solver = with_rules(&vec!["galaxy = ap inc 1"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::F(Fun::Galaxy), 10)),
+            "ap inc 1"
         );
     }
 }

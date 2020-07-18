@@ -47,6 +47,7 @@ fn decode(token: &str) -> Op {
         "multipledraw" => Op::MultipleDraw,
         "if0" => Op::If0,
         "interact" => Op::Interact,
+        "galaxy" => Op::Galaxy,
         _ => panic!("Unknown operand {}", token),
     }
 }
@@ -214,5 +215,10 @@ mod tests {
     #[test]
     fn test_interact_decode() {
         assert_eq!(decode("interact"), Op::Interact)
+    }
+
+    #[test]
+    fn test_galaxy_decode() {
+        assert_eq!(decode("galaxy"), Op::Galaxy)
     }
 }
