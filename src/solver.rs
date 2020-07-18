@@ -222,6 +222,7 @@ impl Solver {
             (Some(Fun::Cdr), _, _) => self.apply_cdr(entry),
             (Some(Fun::IsNil), _, _) => self.apply_isnil(entry, depth),
             (Some(Fun::If0), _, _) => self.apply_if0(entry, depth),
+            (Some(Fun::Neg), _, _) => self.apply_neg(entry, depth),
             _ => (false, entry),
         }
     }
@@ -440,6 +441,19 @@ impl Solver {
                         let res = if n == 0 { Fun::T } else { Fun::F };
                         (true, Value::F(res))
                     }
+                    x0 => (false, ap_with_f(f, x0)),
+                }
+            }
+            (f, x0) => (false, reconstruct_ap1(f, x0)),
+        }
+    }
+
+    fn apply_neg(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap1(entry) {
+            (f, Some(x0)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                match x0 {
+                    Value::Num(n) => (true, Value::Num(-n)),
                     x0 => (false, ap_with_f(f, x0)),
                 }
             }
@@ -939,6 +953,19 @@ mod tests {
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 10)),
             "2"
+        );
+    }
+
+    #[test]
+    fn test_neg() {
+        let mut solver = with_rules(&vec![":1 = ap neg 1", ":2 = ap neg -1"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "-1"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 10)),
+            "1"
         );
     }
 }
