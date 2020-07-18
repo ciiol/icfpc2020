@@ -190,7 +190,7 @@ impl Solver {
                 })
             }
         };
-        let (changed, new_val) = self.simplify(val);
+        let (changed, new_val) = self.simplify(val, depth);
         if changed {
             self.deduce(new_val, depth - 1)
         } else {
@@ -198,7 +198,7 @@ impl Solver {
         }
     }
 
-    fn simplify(&mut self, entry: Value) -> (bool, Value) {
+    fn simplify(&mut self, entry: Value, depth: usize) -> (bool, Value) {
         let l1 = entry.seek_left_fun(1);
         let l2 = entry.seek_left_fun(2);
         let l3 = entry.seek_left_fun(3);
@@ -211,6 +211,17 @@ impl Solver {
             (_, _, Some(Fun::C)) => self.apply_combinator_c(entry),
             (_, _, Some(Fun::B)) => self.apply_combinator_b(entry),
             (_, _, Some(Fun::Cons)) => self.apply_cons(entry),
+            (_, Some(Fun::Add), _) => self.apply_add(entry, depth),
+            (_, Some(Fun::Mul), _) => self.apply_mul(entry, depth),
+            (_, Some(Fun::Div), _) => self.apply_div(entry, depth),
+            (_, Some(Fun::Lt), _) => self.apply_lt(entry, depth),
+            (Some(Fun::Inc), _, _) => self.apply_inc(entry, depth),
+            (Some(Fun::Dec), _, _) => self.apply_dec(entry, depth),
+            (Some(Fun::Pwr2), _, _) => self.apply_pwr2(entry, depth),
+            (Some(Fun::Car), _, _) => self.apply_car(entry),
+            (Some(Fun::Cdr), _, _) => self.apply_cdr(entry),
+            (Some(Fun::IsNil), _, _) => self.apply_isnil(entry, depth),
+            (Some(Fun::If0), _, _) => self.apply_if0(entry, depth),
             _ => (false, entry),
         }
     }
@@ -236,177 +247,298 @@ impl Solver {
     }
 
     fn apply_combinator_k(&mut self, entry: Value) -> (bool, Value) {
-        match entry {
-            Value::Ap(Ap {
-                f: Some(f),
-                arg: Some(_x1),
-            }) => match *f {
-                Value::Ap(Ap {
-                    f: _,
-                    arg: Some(x0),
-                }) => (true, *x0),
-                other => (false, other),
-            },
-            other => (false, other),
+        match deconstruct_ap2(entry) {
+            (_f, Some(x0), Some(_)) => (true, *x0),
+            (f, x0, x1) => (false, reconstruct_ap2(f, x0, x1)),
         }
     }
 
     fn apply_false(&mut self, entry: Value) -> (bool, Value) {
-        match entry {
-            Value::Ap(Ap {
-                f: Some(f),
-                arg: Some(x1),
-            }) => match *f {
-                Value::Ap(Ap {
-                    f: _,
-                    arg: Some(_x0),
-                }) => (true, *x1),
-                other => (false, other),
-            },
-            other => (false, other),
+        match deconstruct_ap2(entry) {
+            (_f, Some(_), Some(x1)) => (true, *x1),
+            (f, x0, x1) => (false, reconstruct_ap2(f, x0, x1)),
         }
     }
 
     fn apply_combinator_s(&mut self, entry: Value) -> (bool, Value) {
-        match entry {
-            Value::Ap(Ap {
-                f: Some(f),
-                arg: Some(x2),
-            }) => match *f {
-                Value::Ap(Ap {
-                    f: Some(f),
-                    arg: Some(x1),
-                }) => match *f {
-                    Value::Ap(Ap {
-                        f: _,
-                        arg: Some(x0),
-                    }) => {
-                        let ref_x2 = self.put_hidden(*x2);
-                        let ap1 = Value::Ap(Ap {
-                            f: Some(x0),
-                            arg: Some(Box::new(Value::Ref(ref_x2))),
-                        });
-                        let ap2 = Value::Ap(Ap {
-                            f: Some(x1),
-                            arg: Some(Box::new(Value::Ref(ref_x2))),
-                        });
-                        (
-                            true,
-                            Value::Ap(Ap {
-                                f: Some(Box::new(ap1)),
-                                arg: Some(Box::new(ap2)),
-                            }),
-                        )
-                    }
-                    other => (false, other),
-                },
-                other => (false, other),
-            },
-            other => (false, other),
+        match deconstruct_ap3(entry) {
+            (_f, Some(x0), Some(x1), Some(x2)) => {
+                let ref_x2 = self.put_hidden(*x2);
+                (
+                    true,
+                    ap(ap(*x0, Value::Ref(ref_x2)), ap(*x1, Value::Ref(ref_x2))),
+                )
+            }
+            (f, x0, x1, x2) => (false, reconstruct_ap3(f, x0, x1, x2)),
         }
     }
 
     fn apply_combinator_c(&mut self, entry: Value) -> (bool, Value) {
-        match entry {
-            Value::Ap(Ap {
-                f: Some(f),
-                arg: Some(x2),
-            }) => match *f {
-                Value::Ap(Ap {
-                    f: Some(f),
-                    arg: Some(x1),
-                }) => match *f {
-                    Value::Ap(Ap {
-                        f: _,
-                        arg: Some(x0),
-                    }) => {
-                        let ap1 = Value::Ap(Ap {
-                            f: Some(x0),
-                            arg: Some(x2),
-                        });
-                        (
-                            true,
-                            Value::Ap(Ap {
-                                f: Some(Box::new(ap1)),
-                                arg: Some(x1),
-                            }),
-                        )
-                    }
-                    other => (false, other),
-                },
-                other => (false, other),
-            },
-            other => (false, other),
+        match deconstruct_ap3(entry) {
+            (_f, x0 @ Some(_), x1 @ Some(_), x2 @ Some(_)) => (true, reconstruct_ap2(x0, x2, x1)),
+            (f, x0, x1, x2) => (false, reconstruct_ap3(f, x0, x1, x2)),
         }
     }
 
     fn apply_combinator_b(&mut self, entry: Value) -> (bool, Value) {
-        match entry {
-            Value::Ap(Ap {
-                f: Some(f),
-                arg: Some(x2),
-            }) => match *f {
-                Value::Ap(Ap {
-                    f: Some(f),
-                    arg: Some(x1),
-                }) => match *f {
-                    Value::Ap(Ap {
-                        f: _,
-                        arg: Some(x0),
-                    }) => {
-                        let ap1 = Value::Ap(Ap {
-                            f: Some(x1),
-                            arg: Some(x2),
-                        });
-                        (
-                            true,
-                            Value::Ap(Ap {
-                                f: Some(x0),
-                                arg: Some(Box::new(ap1)),
-                            }),
-                        )
-                    }
-                    other => (false, other),
-                },
-                other => (false, other),
-            },
-            other => (false, other),
+        match deconstruct_ap3(entry) {
+            (_f, Some(x0), Some(x1), Some(x2)) => (true, ap(*x0, ap_boxed(x1, x2))),
+            (f, x0, x1, x2) => (false, reconstruct_ap3(f, x0, x1, x2)),
         }
     }
 
     fn apply_cons(&mut self, entry: Value) -> (bool, Value) {
-        match entry {
-            Value::Ap(Ap {
-                f: Some(f),
-                arg: Some(x2),
-            }) => match *f {
-                Value::Ap(Ap {
-                    f: Some(f),
-                    arg: Some(x1),
-                }) => match *f {
-                    Value::Ap(Ap {
-                        f: _,
-                        arg: Some(x0),
-                    }) => {
-                        let ap1 = Value::Ap(Ap {
-                            f: Some(x2),
-                            arg: Some(x0),
-                        });
-                        (
-                            true,
-                            Value::Ap(Ap {
-                                f: Some(Box::new(ap1)),
-                                arg: Some(x1),
-                            }),
-                        )
-                    }
-                    other => (false, other),
-                },
-                other => (false, other),
-            },
-            other => (false, other),
+        match deconstruct_ap3(entry) {
+            (_f, x0 @ Some(_), x1 @ Some(_), x2 @ Some(_)) => (true, reconstruct_ap2(x2, x0, x1)),
+            (f, x0, x1, x2) => (false, reconstruct_ap3(f, x0, x1, x2)),
         }
     }
+
+    fn apply_add(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap2(entry) {
+            (f, Some(x0), Some(x1)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                let x1 = self.deduce(*x1, depth - 1);
+                match (x0, x1) {
+                    (Value::Num(n1), Value::Num(n2)) => (true, Value::Num(n1 + n2)),
+                    (x0, x1) => (false, ap(ap_with_f(f, x0), x1)),
+                }
+            }
+            (f, x0, x1) => (false, reconstruct_ap2(f, x0, x1)),
+        }
+    }
+
+    fn apply_mul(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap2(entry) {
+            (f, Some(x0), Some(x1)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                let x1 = self.deduce(*x1, depth - 1);
+                match (x0, x1) {
+                    (Value::Num(n1), Value::Num(n2)) => (true, Value::Num(n1 * n2)),
+                    (x0, x1) => (false, ap(ap_with_f(f, x0), x1)),
+                }
+            }
+            (f, x0, x1) => (false, reconstruct_ap2(f, x0, x1)),
+        }
+    }
+
+    fn apply_div(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap2(entry) {
+            (f, Some(x0), Some(x1)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                let x1 = self.deduce(*x1, depth - 1);
+                match (x0, x1) {
+                    (Value::Num(n1), Value::Num(n2)) => (true, Value::Num(n1 / n2)),
+                    (x0, x1) => (false, ap(ap_with_f(f, x0), x1)),
+                }
+            }
+            (f, x0, x1) => (false, reconstruct_ap2(f, x0, x1)),
+        }
+    }
+
+    fn apply_lt(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap2(entry) {
+            (f, Some(x0), Some(x1)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                let x1 = self.deduce(*x1, depth - 1);
+                match (x0, x1) {
+                    (Value::Num(n1), Value::Num(n2)) => {
+                        let res = if n1 < n2 { Fun::T } else { Fun::F };
+                        (true, Value::F(res))
+                    }
+                    (x0, x1) => (false, ap(ap_with_f(f, x0), x1)),
+                }
+            }
+            (f, x0, x1) => (false, reconstruct_ap2(f, x0, x1)),
+        }
+    }
+
+    fn apply_inc(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap1(entry) {
+            (f, Some(x0)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                match x0 {
+                    Value::Num(n) => (true, Value::Num(n + 1)),
+                    x0 => (false, ap_with_f(f, x0)),
+                }
+            }
+            (f, x0) => (false, reconstruct_ap1(f, x0)),
+        }
+    }
+
+    fn apply_dec(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap1(entry) {
+            (f, Some(x0)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                match x0 {
+                    Value::Num(n) => (true, Value::Num(n - 1)),
+                    x0 => (false, ap_with_f(f, x0)),
+                }
+            }
+            (f, x0) => (false, reconstruct_ap1(f, x0)),
+        }
+    }
+
+    fn apply_pwr2(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap1(entry) {
+            (f, Some(x0)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                match x0 {
+                    Value::Num(n) if n >= 0 => (true, Value::Num((2 as i64).pow(n as u32))),
+                    x0 => (false, ap_with_f(f, x0)),
+                }
+            }
+            (f, x0) => (false, reconstruct_ap1(f, x0)),
+        }
+    }
+
+    fn apply_car(&mut self, entry: Value) -> (bool, Value) {
+        match deconstruct_ap1(entry) {
+            (_f, Some(x0)) => (
+                true,
+                reconstruct_ap1(Some(x0), Some(Box::new(Value::F(Fun::T)))),
+            ),
+            _ => panic!("Not implemented: partial car"),
+        }
+    }
+
+    fn apply_cdr(&mut self, entry: Value) -> (bool, Value) {
+        match deconstruct_ap1(entry) {
+            (_f, Some(x0)) => (
+                true,
+                reconstruct_ap1(Some(x0), Some(Box::new(Value::F(Fun::F)))),
+            ),
+            _ => panic!("Not implemented: partial cdr"),
+        }
+    }
+
+    fn apply_isnil(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap1(entry) {
+            (f, Some(x0)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                match x0 {
+                    Value::F(Fun::Nil) => (true, Value::F(Fun::T)),
+                    x0 => {
+                        if let Some(Fun::Cons) = x0.seek_left_fun(2) {
+                            (true, Value::F(Fun::F))
+                        } else {
+                            (false, ap_with_f(f, x0))
+                        }
+                    }
+                }
+            }
+            (f, x0) => (false, reconstruct_ap1(f, x0)),
+        }
+    }
+
+    fn apply_if0(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap1(entry) {
+            (f, Some(x0)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                match x0 {
+                    Value::Num(n) => {
+                        let res = if n == 0 { Fun::T } else { Fun::F };
+                        (true, Value::F(res))
+                    }
+                    x0 => (false, ap_with_f(f, x0)),
+                }
+            }
+            (f, x0) => (false, reconstruct_ap1(f, x0)),
+        }
+    }
+}
+
+fn ap(f: Value, arg: Value) -> Value {
+    Value::Ap(Ap {
+        f: Some(Box::new(f)),
+        arg: Some(Box::new(arg)),
+    })
+}
+
+fn ap_boxed(f: Box<Value>, arg: Box<Value>) -> Value {
+    Value::Ap(Ap {
+        f: Some(f),
+        arg: Some(arg),
+    })
+}
+
+fn ap_with_f(f: Option<Box<Value>>, arg: Value) -> Value {
+    Value::Ap(Ap {
+        f,
+        arg: Some(Box::new(arg)),
+    })
+}
+
+fn reconstruct_ap1(f: Option<Box<Value>>, x0: Option<Box<Value>>) -> Value {
+    Value::Ap(Ap { f, arg: x0 })
+}
+
+fn deconstruct_ap1(entry: Value) -> (Option<Box<Value>>, Option<Box<Value>>) {
+    match entry {
+        Value::Ap(Ap { f, arg: x0 }) => (f, x0),
+        _other => panic!("It isn't ap1"),
+    }
+}
+
+fn reconstruct_ap2(f: Option<Box<Value>>, x0: Option<Box<Value>>, x1: Option<Box<Value>>) -> Value {
+    Value::Ap(Ap {
+        f: Some(Box::new(Value::Ap(Ap { f, arg: x0 }))),
+        arg: x1,
+    })
+}
+
+fn deconstruct_ap2(entry: Value) -> (Option<Box<Value>>, Option<Box<Value>>, Option<Box<Value>>) {
+    match entry {
+        Value::Ap(Ap {
+            f: Some(f),
+            arg: x1,
+        }) => match *f {
+            Value::Ap(Ap { f, arg: x0 }) => (f, x0, x1),
+            _other => panic!("It isn't ap2"),
+        },
+        _other => panic!("It isn't ap2"),
+    }
+}
+
+fn deconstruct_ap3(
+    entry: Value,
+) -> (
+    Option<Box<Value>>,
+    Option<Box<Value>>,
+    Option<Box<Value>>,
+    Option<Box<Value>>,
+) {
+    match entry {
+        Value::Ap(Ap {
+            f: Some(f),
+            arg: x2,
+        }) => match *f {
+            Value::Ap(Ap {
+                f: Some(f),
+                arg: x1,
+            }) => match *f {
+                Value::Ap(Ap { f, arg: x0 }) => (f, x0, x1, x2),
+                _other => panic!("It isn't ap3"),
+            },
+            _other => panic!("It isn't ap3"),
+        },
+        _other => panic!("It isn't ap3"),
+    }
+}
+
+fn reconstruct_ap3(
+    f: Option<Box<Value>>,
+    x0: Option<Box<Value>>,
+    x1: Option<Box<Value>>,
+    x2: Option<Box<Value>>,
+) -> Value {
+    Value::Ap(Ap {
+        f: Some(Box::new(Value::Ap(Ap {
+            f: Some(Box::new(Value::Ap(Ap { f, arg: x0 }))),
+            arg: x1,
+        }))),
+        arg: x2,
+    })
 }
 
 impl From<Node> for Rule {
@@ -631,10 +763,17 @@ mod tests {
 
     #[test]
     fn test_s() {
-        let mut solver = with_rules(&vec![":1 = ap ap ap s inc dec :3"]);
+        let mut solver = with_rules(&vec![
+            ":1 = ap ap ap s add inc 1",
+            ":2 = ap ap ap s mul ap add 1 6",
+        ]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
-            "ap ap inc :3 ap dec :3"
+            "3"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 100)),
+            "42"
         );
     }
 
@@ -677,9 +816,129 @@ mod tests {
     #[test]
     fn test_simple_definiton() {
         let mut solver = with_rules(&vec!["galaxy = ap inc 1"]);
+        assert_eq!(format!("{}", solver.deduce(Value::F(Fun::Galaxy), 10)), "2");
+    }
+
+    #[test]
+    fn test_add() {
+        let mut solver = with_rules(&vec![":1 = ap ap add 1 2"]);
         assert_eq!(
-            format!("{}", solver.deduce(Value::F(Fun::Galaxy), 10)),
-            "ap inc 1"
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "3"
+        );
+    }
+
+    #[test]
+    fn test_inc() {
+        let mut solver = with_rules(&vec![":1 = ap inc 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "3"
+        );
+    }
+
+    #[test]
+    fn test_dec() {
+        let mut solver = with_rules(&vec![":1 = ap dec 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "1"
+        );
+    }
+
+    #[test]
+    fn test_mul() {
+        let mut solver = with_rules(&vec![":1 = ap ap mul 3 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "6"
+        );
+    }
+
+    #[test]
+    fn test_div() {
+        let mut solver = with_rules(&vec![":1 = ap ap div 5 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "2"
+        );
+    }
+
+    #[test]
+    fn test_pwr2() {
+        let mut solver = with_rules(&vec![":1 = ap pwr2 2", ":2 = ap pwr2 0"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "4"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 10)),
+            "1"
+        );
+    }
+
+    #[test]
+    fn test_car() {
+        let mut solver = with_rules(&vec![":1 = ap car ap ap cons 1 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "1"
+        );
+    }
+
+    #[test]
+    fn test_cdr() {
+        let mut solver = with_rules(&vec![":1 = ap cdr ap ap cons 1 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "2"
+        );
+    }
+
+    #[test]
+    fn test_lt() {
+        let mut solver = with_rules(&vec![
+            ":1 = ap ap lt -19 -20",
+            ":2 = ap ap lt -20 -20",
+            ":3 = ap ap lt -21 -20",
+        ]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "f"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 10)),
+            "f"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(3)), 10)),
+            "t"
+        );
+    }
+
+    #[test]
+    fn test_isnil() {
+        let mut solver = with_rules(&vec![":1 = ap isnil nil", ":2 = ap isnil ap ap cons 1 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "t"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 10)),
+            "f"
+        );
+    }
+
+    #[test]
+    fn test_if0() {
+        let mut solver = with_rules(&vec![":1 = ap ap ap if0 0 1 2", ":2 = ap ap ap if0 1 1 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "1"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 10)),
+            "2"
         );
     }
 }
