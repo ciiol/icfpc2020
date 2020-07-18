@@ -28,14 +28,12 @@ fn pretty(op: &Modulatable) -> String {
 
 fn pretty_pair_int(l: &Box<Modulatable>, r: &Box<Modulatable>) -> String {
     match (l.as_ref(), r.as_ref()) {
-        (lref, Modulatable::Nil) => {
-            format!("{}]", pretty(lref))
-        },
-        (lref, Modulatable::Pair(internal_l, internal_r)) => {
-            format!("{}, {}", pretty(lref), pretty_pair_int(internal_l, internal_r))
-        },
-        (lref, rref) => {
-            format!("{} | {}]", pretty(lref), pretty(rref))
-        },
+        (lref, Modulatable::Nil) => format!("{}]", pretty(lref)),
+        (lref, Modulatable::Pair(internal_l, internal_r)) => format!(
+            "{}, {}",
+            pretty(lref),
+            pretty_pair_int(internal_l, internal_r)
+        ),
+        (lref, rref) => format!("{} | {}]", pretty(lref), pretty(rref)),
     }
 }

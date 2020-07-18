@@ -29,32 +29,22 @@ fn pretty(input: &str) -> (Modulatable, &str) {
                 continue;
             }
             Some('n') => {
-                let second = chars.next();  // i
-                let third = chars.next();  // l
+                let second = chars.next(); // i
+                let third = chars.next(); // l
                 assert_eq!(second, Some('i'));
                 assert_eq!(third, Some('l'));
-                return (Modulatable::Nil, chars.as_str())
+                return (Modulatable::Nil, chars.as_str());
             }
-            Some(c @ '-') => {
-                return pretty_number(c, chars.as_str())
-            }
-            Some(c) if c.is_numeric() => {
-                return pretty_number(c, chars.as_str())
-            }
-            Some('[') => {
-                return pretty_pair(chars.as_str())
-            },
-            other => panic!("Unexpected {:?}", other)
+            Some(c @ '-') => return pretty_number(c, chars.as_str()),
+            Some(c) if c.is_numeric() => return pretty_number(c, chars.as_str()),
+            Some('[') => return pretty_pair(chars.as_str()),
+            other => panic!("Unexpected {:?}", other),
         }
     }
 }
 
 fn pretty_number(c: char, input: &str) -> (Modulatable, &str) {
-    let sign: i64 = if c == '-' {
-        -1
-    } else {
-       1
-    };
+    let sign: i64 = if c == '-' { -1 } else { 1 };
     let mut result: i64 = if c == '-' {
         0
     } else {
@@ -68,7 +58,7 @@ fn pretty_number(c: char, input: &str) -> (Modulatable, &str) {
                 result *= 10;
                 result += c.to_digit(10).unwrap() as i64
             }
-            _other => break
+            _other => break,
         }
         last_num_pos += 1;
     }
@@ -85,19 +75,22 @@ fn pretty_pair(input: &str) -> (Modulatable, &str) {
             }
             Some(',') => {
                 let (right, tail) = pretty_pair(chars.as_str());
-                return (Modulatable::Pair(Box::new(left), Box::new(right)), tail)
+                return (Modulatable::Pair(Box::new(left), Box::new(right)), tail);
             }
             Some('|') => {
                 let (right, tail) = pretty(chars.as_str());
                 assert!(tail.starts_with(']'));
-                return (Modulatable::Pair(Box::new(left), Box::new(right)), &tail[1..])
+                return (
+                    Modulatable::Pair(Box::new(left), Box::new(right)),
+                    &tail[1..],
+                );
             }
             Some(']') => {
                 let left = Box::new(left);
                 let right = Box::new(Modulatable::Nil);
-                return (Modulatable::Pair(left, right), chars.as_str())
+                return (Modulatable::Pair(left, right), chars.as_str());
             }
-            other => panic!("Unexpected {:?}", other)
+            other => panic!("Unexpected {:?}", other),
         }
     }
 }
