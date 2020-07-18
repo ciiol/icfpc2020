@@ -23,7 +23,7 @@ fn main() -> Result<(), Error> {
 }
 
 fn build_api_uri(server_url: &str) -> String {
-    let api_key = env::var("API_KEY").unwrap();
+    let api_key = option_env!("API_KEY").unwrap();
     format!("{}/aliens/send?apiKey={}", server_url, api_key)
 }
 
