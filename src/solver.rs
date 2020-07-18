@@ -1,6 +1,7 @@
 use crate::ast::{self, Node};
 use crate::operand::Address;
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Solver {
@@ -15,6 +16,7 @@ pub enum Value {
     Ref(Ref),
     Ap(Ap),
     F(Fun),
+    Pair(Pair),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,6 +29,12 @@ pub struct Rule {
 pub enum Ref {
     Ref(Address),
     HiddenRef(Address),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pair {
+    Nil,
+    Pair(Box<Value>, Box<Value>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -103,8 +111,36 @@ impl Solver {
         }
     }
 
-    pub fn add_rule(&mut self, rule: Rule) -> () {
-        self.rules.push(rule)
+    pub fn put(&mut self, r: Ref, value: Value) -> Result<(), String> {
+        if let Some(exists) = self.get(&r) {
+            return Err(format!(
+                "Memory {:?} has already been defined as {:?}",
+                r, exists
+            ));
+        }
+        match r {
+            Ref::Ref(addr) => self.memory.insert(addr, value),
+            Ref::HiddenRef(addr) => self.hidden_memory.insert(addr, value),
+        };
+        Ok(())
+    }
+
+    pub fn get_mut(&mut self, r: &Ref) -> Option<&mut Value> {
+        match r {
+            Ref::Ref(addr) => self.memory.get_mut(addr),
+            Ref::HiddenRef(addr) => self.hidden_memory.get_mut(addr),
+        }
+    }
+
+    pub fn add_rule(&mut self, rule: Rule) -> Result<(), String> {
+        match rule {
+            Rule {
+                left: Value::Ref(r),
+                right: value,
+            } => self.put(r, value)?,
+            rule => self.rules.push(rule),
+        }
+        Ok(())
     }
 
     pub fn deduce(&mut self, entry: Value, depth: usize) -> Value {
@@ -176,5 +212,136 @@ impl From<ast::Ap> for Ap {
 impl From<ast::Ref> for Ref {
     fn from(r: ast::Ref) -> Self {
         Ref::Ref(r.addr)
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Num(n) => write!(f, "{}", n),
+            Value::F(fun) => write!(f, "{}", fun),
+            Value::Ref(r) => write!(f, "{}", r),
+            Value::Pair(p) => write!(f, "{}", p),
+            Value::Ap(ap) => write!(f, "{}", ap),
+        }
+    }
+}
+
+impl fmt::Display for Fun {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Fun::Inc => write!(f, "inc"),
+            Fun::Dec => write!(f, "dec"),
+            Fun::Add => write!(f, "add"),
+            Fun::Mul => write!(f, "mul"),
+            Fun::Div => write!(f, "div"),
+            Fun::T => write!(f, "t"),
+            Fun::F => write!(f, "f"),
+            Fun::Lt => write!(f, "lt"),
+            Fun::Mod => write!(f, "mod"),
+            Fun::Dem => write!(f, "dem"),
+            Fun::Send => write!(f, "send"),
+            Fun::Neg => write!(f, "neg"),
+            Fun::Pwr2 => write!(f, "pwr2"),
+            Fun::S => write!(f, "s"),
+            Fun::C => write!(f, "c"),
+            Fun::B => write!(f, "b"),
+            Fun::I => write!(f, "i"),
+            Fun::Cons => write!(f, "cons"),
+            Fun::Cdr => write!(f, "cdr"),
+            Fun::Car => write!(f, "car"),
+            Fun::Nil => write!(f, "nil"),
+            Fun::IsNil => write!(f, "isnil"),
+            Fun::Vec => write!(f, "vec"),
+            Fun::Draw => write!(f, "draw"),
+            Fun::Chkb => write!(f, "chkb"),
+            Fun::MultipleDraw => write!(f, "multipledraw"),
+            Fun::If0 => write!(f, "if0"),
+            Fun::Interact => write!(f, "interact"),
+        }
+    }
+}
+
+impl fmt::Display for Ref {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ref::Ref(addr) => write!(f, ":{}", *addr),
+            Ref::HiddenRef(addr) => write!(f, "#{}", *addr),
+        }
+    }
+}
+
+impl fmt::Display for Ap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ap")?;
+        if let Some(v) = &self.f {
+            write!(f, " {}", *v)?;
+        }
+        if let Some(v) = &self.arg {
+            write!(f, " {}", *v)?;
+        }
+        write!(f, "")
+    }
+}
+
+impl fmt::Display for Pair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Pair::Nil => write!(f, "nil"),
+            Pair::Pair(l, r) => {
+                write!(f, "[{}", *l)?;
+                let mut head = r;
+                loop {
+                    match head.as_ref() {
+                        Value::Pair(Pair::Nil) => break,
+                        Value::Pair(Pair::Pair(l, r)) => {
+                            write!(f, ", {}", *l)?;
+                            head = r;
+                        }
+                        other => {
+                            write!(f, " | {}", *other)?;
+                            break;
+                        }
+                    }
+                }
+                write!(f, "]")
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::build_eq_tree;
+    use crate::parser::parse;
+
+    fn rules(input: &[&str]) -> Vec<Rule> {
+        input
+            .iter()
+            .map(|s| Rule::from(build_eq_tree(&parse(s)).unwrap()))
+            .collect()
+    }
+
+    fn with_rules(input: &[&str]) -> Solver {
+        let mut result = Solver::new();
+        for r in rules(input).into_iter() {
+            result.add_rule(r).unwrap();
+        }
+        result
+    }
+
+    #[test]
+    fn test_rules_load() {
+        let solver = with_rules(&vec![
+            ":1 = ap ap cons 1 nil",
+            ":2 = cons",
+            "nil = ap ap cons t t",
+        ]);
+        assert_eq!(
+            format!("{}", solver.get(&Ref::Ref(1)).unwrap()),
+            "ap ap cons 1 nil"
+        );
+        assert_eq!(None, solver.get(&Ref::Ref(5)));
     }
 }
