@@ -1,9 +1,3 @@
-#[macro_use]
-extern crate lazy_static;
-
-mod modulator;
-mod operand;
-mod parser;
 
 use std::env;
 use std::io::Error;

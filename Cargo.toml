@@ -4,10 +4,6 @@ version = "0.1.0"
 authors = []
 edition = "2018"
 
-[[bin]]
-name = "submission"
-path = "src/main.rs"
-
 [dependencies]
 regex = "1"
 lazy_static = "1.4.0"
