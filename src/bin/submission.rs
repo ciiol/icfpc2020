@@ -1,6 +1,6 @@
+use icfpc2020::modulator::{demodulate, modulate, Modulatable};
 use std::env;
 use std::io::Error;
-use icfpc2020::modulator::{modulate, demodulate, Modulatable};
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().collect();
@@ -34,8 +34,8 @@ fn build_join_request(player_key: &str) -> String {
             Box::new(demodulate(&player_key)),
             Box::new(Modulatable::Pair(
                 Box::new(Modulatable::Nil),
-                         Box::new(Modulatable::Nil),
-            ))
+                Box::new(Modulatable::Nil),
+            )),
         )),
     ))
 }
