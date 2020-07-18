@@ -63,6 +63,8 @@ jobs:
         with:
           command: build
           args: --release
+        env:
+          API_KEY: 24d3ac07bc0a463b8af83ad6e01d27c0
       - name: Upload build result
         uses: actions/upload-artifact@v1
         with:
