@@ -30,12 +30,6 @@ pub enum Ref {
     HiddenRef(Address),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Pair {
-    Nil,
-    Pair(Box<Value>, Box<Value>),
-}
-
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Fun {
     Inc,
@@ -495,32 +489,6 @@ impl fmt::Display for Ap {
         write!(f, "")
     }
 }
-
-// impl fmt::Display for Pair {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Pair::Nil => write!(f, "nil"),
-//             Pair::Pair(l, r) => {
-//                 write!(f, "[{}", *l)?;
-//                 let mut head = r;
-//                 loop {
-//                     match head.as_ref() {
-//                         Value::Pair(Pair::Nil) => break,
-//                         Value::Pair(Pair::Pair(l, r)) => {
-//                             write!(f, ", {}", *l)?;
-//                             head = r;
-//                         }
-//                         other => {
-//                             write!(f, " | {}", *other)?;
-//                             break;
-//                         }
-//                     }
-//                 }
-//                 write!(f, "]")
-//             }
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
