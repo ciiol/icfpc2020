@@ -1,5 +1,6 @@
 use std::env;
 use std::io::Error;
+use icfpc2020::modulator::modulate;
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().collect();
@@ -9,8 +10,23 @@ fn main() -> Result<(), Error> {
 
     println!("ServerUrl: {}; PlayerKey: {}", server_url, player_key);
 
-    let response = isahc::get(format!("{}?playerKey={}", server_url, player_key))?;
-    assert!(response.status().is_success());
+    let uri = build_api_uri(&server_url);
+
+    let join_request = build_join_request(&player_key);
+    let join_response = isahc::post(uri, join_request)?;
+
+    println!("Response: {:?}", join_response.body());
+
+    assert!(join_response.status().is_success());
 
     Ok(())
+}
+
+fn build_api_uri(server_url: &str) -> String {
+    let api_key = env::var("API_KEY").unwrap();
+    format!("{}/aliens/send?apiKey={}", server_url, api_key)
+}
+
+fn build_join_request(player_key: &str) -> String {
+    modulate(format!("[2, {}, nil]", &player_key))
 }
