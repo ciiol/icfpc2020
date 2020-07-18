@@ -1,6 +1,6 @@
 use std::env;
 use std::io::Error;
-use icfpc2020::modulator::modulate;
+use icfpc2020::modulator::{modulate, demodulate, Modulatable};
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().collect();
@@ -28,5 +28,14 @@ fn build_api_uri(server_url: &str) -> String {
 }
 
 fn build_join_request(player_key: &str) -> String {
-    modulate(format!("[2, {}, nil]", &player_key))
+    modulate(&Modulatable::Pair(
+        Box::new(Modulatable::Num(2)),
+        Box::new(Modulatable::Pair(
+            Box::new(demodulate(&player_key)),
+            Box::new(Modulatable::Pair(
+                Box::new(Modulatable::Nil),
+                         Box::new(Modulatable::Nil),
+            ))
+        )),
+    ))
 }
