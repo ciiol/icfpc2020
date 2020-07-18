@@ -28,10 +28,12 @@ fn build_api_uri(server_url: &str) -> String {
 }
 
 fn build_join_request(player_key: &str) -> String {
+    let player_key_int = player_key.parse::<i64>().unwrap();
+
     modulate(&Modulatable::Pair(
         Box::new(Modulatable::Num(2)),
         Box::new(Modulatable::Pair(
-            Box::new(demodulate(&player_key)),
+            Box::new(Modulatable::Num(player_key_int)),
             Box::new(Modulatable::Pair(
                 Box::new(Modulatable::Nil),
                 Box::new(Modulatable::Nil),
