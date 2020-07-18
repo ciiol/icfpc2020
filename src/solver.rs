@@ -6,7 +6,7 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq)]
 struct Solver {
     memory: HashMap<Address, Value>,
-    hidden_memory: HashMap<Address, Value>,
+    hidden_memory: Vec<Value>,
     rules: Vec<Rule>,
 }
 
@@ -16,7 +16,6 @@ pub enum Value {
     Ref(Ref),
     Ap(Ap),
     F(Fun),
-    Pair(Pair),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,7 +24,7 @@ pub struct Rule {
     right: Value,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Ref {
     Ref(Address),
     HiddenRef(Address),
@@ -95,11 +94,21 @@ impl Ap {
     }
 }
 
+impl Value {
+    pub fn seek_left_fun(&self, depth: usize) -> Option<Fun> {
+        match self {
+            Value::Ap(Ap { f: Some(l), arg: _ }) if depth > 0 => l.seek_left_fun(depth - 1),
+            Value::F(f) if depth == 0 => Some(*f),
+            _ => None,
+        }
+    }
+}
+
 impl Solver {
     pub fn new() -> Self {
         Self {
             memory: HashMap::new(),
-            hidden_memory: HashMap::new(),
+            hidden_memory: Vec::new(),
             rules: Vec::new(),
         }
     }
@@ -107,7 +116,7 @@ impl Solver {
     pub fn get(&self, r: &Ref) -> Option<&Value> {
         match r {
             Ref::Ref(addr) => self.memory.get(addr),
-            Ref::HiddenRef(addr) => self.hidden_memory.get(addr),
+            Ref::HiddenRef(addr) => self.hidden_memory.get(*addr),
         }
     }
 
@@ -120,15 +129,19 @@ impl Solver {
         }
         match r {
             Ref::Ref(addr) => self.memory.insert(addr, value),
-            Ref::HiddenRef(addr) => self.hidden_memory.insert(addr, value),
+            Ref::HiddenRef(_) => panic!("Do not use hidden memory here"),
         };
         Ok(())
     }
 
-    pub fn get_mut(&mut self, r: &Ref) -> Option<&mut Value> {
-        match r {
-            Ref::Ref(addr) => self.memory.get_mut(addr),
-            Ref::HiddenRef(addr) => self.hidden_memory.get_mut(addr),
+    fn put_hidden(&mut self, value: Value) -> Ref {
+        match value {
+            Value::Ref(r) => r,
+            other => {
+                let addr = self.hidden_memory.len();
+                self.hidden_memory.push(other);
+                Ref::HiddenRef(addr)
+            }
         }
     }
 
@@ -144,8 +157,208 @@ impl Solver {
     }
 
     pub fn deduce(&mut self, entry: Value, depth: usize) -> Value {
-        // TODO
-        entry
+        match entry {
+            Value::Ap(ap) => self.deduce_ap(ap, depth),
+            Value::Ref(r) => {
+                let branch = self.get(&r).unwrap().clone();
+                self.deduce(branch, depth - 1)
+            }
+            other => other,
+        }
+    }
+
+    fn deduce_ap(&mut self, ap: Ap, depth: usize) -> Value {
+        let val = match ap {
+            Ap { f: None, arg } => Value::Ap(Ap { f: None, arg }),
+            Ap { f: Some(f), arg } => {
+                let f = self.deduce(*f, depth - 1);
+                Value::Ap(Ap {
+                    f: Some(Box::new(f)),
+                    arg,
+                })
+            }
+        };
+        let (changed, new_val) = self.simplify(val);
+        if changed {
+            self.deduce(new_val, depth - 1)
+        } else {
+            new_val
+        }
+    }
+
+    fn simplify(&mut self, entry: Value) -> (bool, Value) {
+        let l1 = entry.seek_left_fun(1);
+        let l2 = entry.seek_left_fun(2);
+        let l3 = entry.seek_left_fun(3);
+        match (l1, l2, l3) {
+            (Some(Fun::I), _, _) => self.apply_combinator_i(entry),
+            (Some(Fun::Nil), _, _) => self.apply_nil(entry),
+            (_, Some(Fun::T), _) => self.apply_combinator_k(entry),
+            (_, Some(Fun::F), _) => self.apply_false(entry),
+            (_, _, Some(Fun::S)) => self.apply_combinator_s(entry),
+            (_, _, Some(Fun::C)) => self.apply_combinator_c(entry),
+            (_, _, Some(Fun::B)) => self.apply_combinator_b(entry),
+            _ => (false, entry),
+        }
+    }
+
+    fn apply_combinator_i(&mut self, entry: Value) -> (bool, Value) {
+        match entry {
+            Value::Ap(Ap {
+                f: _,
+                arg: Some(arg),
+            }) => (true, *arg),
+            other => (false, other),
+        }
+    }
+
+    fn apply_nil(&mut self, entry: Value) -> (bool, Value) {
+        match entry {
+            Value::Ap(Ap {
+                f: _,
+                arg: Some(_x0),
+            }) => (true, Value::F(Fun::T)),
+            other => (false, other),
+        }
+    }
+
+    fn apply_combinator_k(&mut self, entry: Value) -> (bool, Value) {
+        match entry {
+            Value::Ap(Ap {
+                f: Some(f),
+                arg: Some(_x1),
+            }) => match *f {
+                Value::Ap(Ap {
+                    f: _,
+                    arg: Some(x0),
+                }) => (true, *x0),
+                other => (false, other),
+            },
+            other => (false, other),
+        }
+    }
+
+    fn apply_false(&mut self, entry: Value) -> (bool, Value) {
+        match entry {
+            Value::Ap(Ap {
+                f: Some(f),
+                arg: Some(x1),
+            }) => match *f {
+                Value::Ap(Ap {
+                    f: _,
+                    arg: Some(_x0),
+                }) => (true, *x1),
+                other => (false, other),
+            },
+            other => (false, other),
+        }
+    }
+
+    fn apply_combinator_s(&mut self, entry: Value) -> (bool, Value) {
+        match entry {
+            Value::Ap(Ap {
+                f: Some(f),
+                arg: Some(x2),
+            }) => match *f {
+                Value::Ap(Ap {
+                    f: Some(f),
+                    arg: Some(x1),
+                }) => match *f {
+                    Value::Ap(Ap {
+                        f: _,
+                        arg: Some(x0),
+                    }) => {
+                        let ref_x2 = self.put_hidden(*x2);
+                        let ap1 = Value::Ap(Ap {
+                            f: Some(x0),
+                            arg: Some(Box::new(Value::Ref(ref_x2))),
+                        });
+                        let ap2 = Value::Ap(Ap {
+                            f: Some(x1),
+                            arg: Some(Box::new(Value::Ref(ref_x2))),
+                        });
+                        (
+                            true,
+                            Value::Ap(Ap {
+                                f: Some(Box::new(ap1)),
+                                arg: Some(Box::new(ap2)),
+                            }),
+                        )
+                    }
+                    other => (false, other),
+                },
+                other => (false, other),
+            },
+            other => (false, other),
+        }
+    }
+
+    fn apply_combinator_c(&mut self, entry: Value) -> (bool, Value) {
+        match entry {
+            Value::Ap(Ap {
+                f: Some(f),
+                arg: Some(x2),
+            }) => match *f {
+                Value::Ap(Ap {
+                    f: Some(f),
+                    arg: Some(x1),
+                }) => match *f {
+                    Value::Ap(Ap {
+                        f: _,
+                        arg: Some(x0),
+                    }) => {
+                        let ap1 = Value::Ap(Ap {
+                            f: Some(x0),
+                            arg: Some(x2),
+                        });
+                        (
+                            true,
+                            Value::Ap(Ap {
+                                f: Some(Box::new(ap1)),
+                                arg: Some(x1),
+                            }),
+                        )
+                    }
+                    other => (false, other),
+                },
+                other => (false, other),
+            },
+            other => (false, other),
+        }
+    }
+
+    fn apply_combinator_b(&mut self, entry: Value) -> (bool, Value) {
+        match entry {
+            Value::Ap(Ap {
+                f: Some(f),
+                arg: Some(x2),
+            }) => match *f {
+                Value::Ap(Ap {
+                    f: Some(f),
+                    arg: Some(x1),
+                }) => match *f {
+                    Value::Ap(Ap {
+                        f: _,
+                        arg: Some(x0),
+                    }) => {
+                        let ap1 = Value::Ap(Ap {
+                            f: Some(x1),
+                            arg: Some(x2),
+                        });
+                        (
+                            true,
+                            Value::Ap(Ap {
+                                f: Some(x0),
+                                arg: Some(Box::new(ap1)),
+                            }),
+                        )
+                    }
+                    other => (false, other),
+                },
+                other => (false, other),
+            },
+            other => (false, other),
+        }
     }
 }
 
@@ -221,7 +434,6 @@ impl fmt::Display for Value {
             Value::Num(n) => write!(f, "{}", n),
             Value::F(fun) => write!(f, "{}", fun),
             Value::Ref(r) => write!(f, "{}", r),
-            Value::Pair(p) => write!(f, "{}", p),
             Value::Ap(ap) => write!(f, "{}", ap),
         }
     }
@@ -284,31 +496,31 @@ impl fmt::Display for Ap {
     }
 }
 
-impl fmt::Display for Pair {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Pair::Nil => write!(f, "nil"),
-            Pair::Pair(l, r) => {
-                write!(f, "[{}", *l)?;
-                let mut head = r;
-                loop {
-                    match head.as_ref() {
-                        Value::Pair(Pair::Nil) => break,
-                        Value::Pair(Pair::Pair(l, r)) => {
-                            write!(f, ", {}", *l)?;
-                            head = r;
-                        }
-                        other => {
-                            write!(f, " | {}", *other)?;
-                            break;
-                        }
-                    }
-                }
-                write!(f, "]")
-            }
-        }
-    }
-}
+// impl fmt::Display for Pair {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         match self {
+//             Pair::Nil => write!(f, "nil"),
+//             Pair::Pair(l, r) => {
+//                 write!(f, "[{}", *l)?;
+//                 let mut head = r;
+//                 loop {
+//                     match head.as_ref() {
+//                         Value::Pair(Pair::Nil) => break,
+//                         Value::Pair(Pair::Pair(l, r)) => {
+//                             write!(f, ", {}", *l)?;
+//                             head = r;
+//                         }
+//                         other => {
+//                             write!(f, " | {}", *other)?;
+//                             break;
+//                         }
+//                     }
+//                 }
+//                 write!(f, "]")
+//             }
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -343,5 +555,75 @@ mod tests {
             "ap ap cons 1 nil"
         );
         assert_eq!(None, solver.get(&Ref::Ref(5)));
+    }
+
+    #[test]
+    fn test_i() {
+        let mut solver = with_rules(&vec![":1 = ap i :2", ":2 = 1", ":3 = ap ap ap i 1 :1 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 100)),
+            "1"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(3)), 100)),
+            "ap ap 1 :1 2"
+        );
+    }
+    #[test]
+    fn test_nil() {
+        let mut solver = with_rules(&vec![":1 = ap nil :2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
+            "t"
+        );
+    }
+
+    #[test]
+    fn test_k() {
+        let mut solver = with_rules(&vec![":1 = ap ap t 1 2", ":2 = ap ap t t ap inc 5"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
+            "1"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 100)),
+            "t"
+        );
+    }
+
+    #[test]
+    fn test_false() {
+        let mut solver = with_rules(&vec![":1 = ap ap f 1 2"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
+            "2"
+        );
+    }
+
+    #[test]
+    fn test_s() {
+        let mut solver = with_rules(&vec![":1 = ap ap ap s inc dec :3"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
+            "ap ap inc :3 ap dec :3"
+        );
+    }
+
+    #[test]
+    fn test_b() {
+        let mut solver = with_rules(&vec![":1 = ap ap ap b inc dec mul"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
+            "ap inc ap dec mul"
+        );
+    }
+
+    #[test]
+    fn test_c() {
+        let mut solver = with_rules(&vec![":1 = ap ap ap c inc dec mul"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
+            "ap ap inc mul dec"
+        );
     }
 }
