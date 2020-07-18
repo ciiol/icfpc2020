@@ -33,48 +33,6 @@ impl Ap {
     pub fn essence() -> Ap {
         Ap { f: None, arg: None }
     }
-
-    pub fn enrich(&mut self, new_arg: Node) -> Result<(), String> {
-        match self {
-            Ap { f: None, arg: None } => {
-                self.f = Some(Box::new(new_arg));
-                Ok(())
-            }
-            Ap {
-                f: Some(_),
-                arg: None,
-            } => {
-                self.arg = Some(Box::new(new_arg));
-                Ok(())
-            }
-            Ap {
-                f: Some(_),
-                arg: Some(_),
-            } => Err(format!("Ap is full: {:?}", self)),
-            Ap {
-                f: None,
-                arg: Some(_),
-            } => Err(format!("Ap is invalid: {:?}", self)),
-        }
-    }
-
-    pub fn is_fully_defined(&self) -> bool {
-        if let Ap {
-            f: Some(_),
-            arg: Some(_),
-        } = self
-        {
-            return true;
-        }
-        return false;
-    }
-
-    pub fn is_essence(&self) -> bool {
-        if let Ap { f: None, arg: None } = self {
-            return true;
-        }
-        return false;
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
