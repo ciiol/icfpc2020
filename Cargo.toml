@@ -8,4 +8,13 @@ edition = "2018"
 regex = "1"
 lazy_static = "1.4.0"
 isahc = "0.9"
+winit_input_helper = "0.7.0"
+winit = "0.22.2"
+pixels = "0.0.4"
 openssl = { version = "0.10", features = ["vendored"] }
+
+# Workaround for build error on macOS
+# Remove this when `gfx-backend-metal` is fixed
+# See: https://github.com/gfx-rs/gfx/pull/3311
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "=0.18.0"

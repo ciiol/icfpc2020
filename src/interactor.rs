@@ -9,8 +9,8 @@ pub struct Interactor {
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Point {
-    x: i64,
-    y: i64,
+    pub x: i64,
+    pub y: i64,
 }
 
 impl Point {
