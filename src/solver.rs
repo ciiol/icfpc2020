@@ -116,15 +116,12 @@ impl Solver {
     }
 
     pub fn put(&mut self, r: Ref, value: Value) -> Result<(), String> {
-        if let Some(exists) = self.get(&r) {
-            return Err(format!(
-                "Memory {:?} has already been defined as {:?}",
-                r, exists
-            ));
-        }
         match r {
-            Ref::Ref(addr) => self.memory.insert(addr, value),
-            Ref::HiddenRef(_) => panic!("Do not use hidden memory here"),
+            Ref::Ref(addr) => {
+                self.memory.insert(addr, value);
+                ()
+            }
+            Ref::HiddenRef(addr) => self.hidden_memory[addr] = value,
         };
         Ok(())
     }
@@ -165,7 +162,9 @@ impl Solver {
             Value::Ap(ap) => self.deduce_ap(ap, depth),
             Value::Ref(r) => {
                 let branch = self.get(&r).unwrap().clone();
-                self.deduce(branch, depth - 1)
+                let new_value = self.deduce(branch, depth - 1);
+                self.put(r, new_value.clone()).unwrap();
+                new_value
             }
             Value::F(f) => {
                 if let Some(exists) = self.definitions.get(&f) {
@@ -733,6 +732,31 @@ mod tests {
     }
 
     #[test]
+    fn test_depth_limit() {
+        let mut solver = with_rules(&vec![":1 = ap :1 :1"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "ap ap ap ap ap :1 :1 :1 :1 :1 :1"
+        );
+    }
+
+    #[test]
+    fn test_simple_definiton() {
+        let mut solver = with_rules(&vec!["galaxy = ap inc 1"]);
+        assert_eq!(format!("{}", solver.deduce(Value::F(Fun::Galaxy), 10)), "2");
+    }
+
+    #[test]
+    fn test_memoization() {
+        let mut solver = with_rules(&vec![":1 = ap ap add 1 2", ":2 = ap inc :1"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 100)),
+            "4"
+        );
+        assert_eq!(format!("{}", solver.get(&Ref::Ref(1)).unwrap()), "3");
+    }
+
+    #[test]
     fn test_i() {
         let mut solver = with_rules(&vec![":1 = ap i :2", ":2 = 1", ":3 = ap ap ap i 1 :1 2"]);
         assert_eq!(
@@ -744,6 +768,7 @@ mod tests {
             "ap ap 1 :1 2"
         );
     }
+
     #[test]
     fn test_nil() {
         let mut solver = with_rules(&vec![":1 = ap nil :2"]);
@@ -816,21 +841,6 @@ mod tests {
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
             "ap ap mul inc dec"
         );
-    }
-
-    #[test]
-    fn test_depth_limit() {
-        let mut solver = with_rules(&vec![":1 = ap :1 :1"]);
-        assert_eq!(
-            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
-            "ap ap ap ap ap :1 :1 :1 :1 :1 :1"
-        );
-    }
-
-    #[test]
-    fn test_simple_definiton() {
-        let mut solver = with_rules(&vec!["galaxy = ap inc 1"]);
-        assert_eq!(format!("{}", solver.deduce(Value::F(Fun::Galaxy), 10)), "2");
     }
 
     #[test]
