@@ -1,3 +1,6 @@
+use crate::solver;
+use std::fmt;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Modulatable {
     Num(i64),
@@ -116,6 +119,50 @@ const fn num_bits<T>() -> usize {
 
 fn num_size(num: u64) -> u32 {
     num_bits::<u64>() as u32 - num.leading_zeros()
+}
+
+impl From<solver::Value> for Modulatable {
+    fn from(v: solver::Value) -> Self {
+        match v {
+            solver::Value::Num(n) => Modulatable::Num(n),
+            solver::Value::F(solver::Fun::Nil) => Modulatable::Nil,
+            ap @ solver::Value::Ap(_) => {
+                let (head, tail) = solver::deconstruct_pair(ap).unwrap();
+                Modulatable::Pair(
+                    Box::new(Modulatable::from(head)),
+                    Box::new(Modulatable::from(tail)),
+                )
+            }
+            other => panic!("Can not convert {}", other),
+        }
+    }
+}
+
+impl fmt::Display for Modulatable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Modulatable::Nil => write!(f, "nil"),
+            Modulatable::Num(n) => write!(f, "{}", n),
+            Modulatable::Pair(l, r) => {
+                write!(f, "[{}", *l)?;
+                let mut head = r;
+                loop {
+                    match head.as_ref() {
+                        Modulatable::Nil => break,
+                        Modulatable::Pair(l, r) => {
+                            write!(f, ", {}", *l)?;
+                            head = r;
+                        }
+                        other => {
+                            write!(f, " | {}", *other)?;
+                            break;
+                        }
+                    }
+                }
+                write!(f, "]")
+            }
+        }
+    }
 }
 
 #[cfg(test)]

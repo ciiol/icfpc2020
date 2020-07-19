@@ -1,8 +1,8 @@
 use icfpc2020::modulator::{demodulate, modulate, Modulatable};
+use isahc::prelude::*;
 use std::env;
 use std::io::Error;
 use std::str::FromStr;
-use isahc::prelude::*;
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().collect();
@@ -20,13 +20,19 @@ fn main() -> Result<(), Error> {
     let mut join_response = isahc::post(&uri, join_request)?;
 
     assert!(join_response.status().is_success());
-    println!("JOIN Response: {:?}", demodulate(&join_response.text()?.to_string()));
+    println!(
+        "JOIN Response: {:?}",
+        demodulate(&join_response.text()?.to_string())
+    );
 
     let start_request = build_start_request(player_key_int);
     let mut start_response = isahc::post(&uri, start_request)?;
 
     assert!(start_response.status().is_success());
-    println!("START Response: {:?}", demodulate(&start_response.text()?.to_string()));
+    println!(
+        "START Response: {:?}",
+        demodulate(&start_response.text()?.to_string())
+    );
 
     Ok(())
 }

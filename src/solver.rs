@@ -3,14 +3,14 @@ use crate::operand::Address;
 use std::collections::HashMap;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Solver {
     memory: HashMap<Address, Value>,
     hidden_memory: Vec<Value>,
     definitions: HashMap<Fun, Value>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Num(i64),
     Ref(Ref),
@@ -18,19 +18,19 @@ pub enum Value {
     F(Fun),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     left: Value,
     right: Value,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum Ref {
     Ref(Address),
     HiddenRef(Address),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum Fun {
     Inc,
     Dec,
@@ -64,7 +64,7 @@ pub enum Fun {
     Galaxy,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ap {
     pub f: Option<Box<Value>>,
     pub arg: Option<Box<Value>>,
@@ -127,7 +127,7 @@ impl Solver {
         Ok(())
     }
 
-    fn put_hidden(&mut self, value: Value) -> Ref {
+    pub fn put_hidden(&mut self, value: Value) -> Ref {
         match value {
             Value::Ref(r) => r,
             other => {
@@ -495,7 +495,7 @@ impl Solver {
     }
 }
 
-fn ap(f: Value, arg: Value) -> Value {
+pub fn ap(f: Value, arg: Value) -> Value {
     Value::Ap(Ap {
         f: Some(Box::new(f)),
         arg: Some(Box::new(arg)),
@@ -516,25 +516,31 @@ fn ap_with_f(f: Option<Box<Value>>, arg: Value) -> Value {
     })
 }
 
-fn reconstruct_ap1(f: Option<Box<Value>>, x0: Option<Box<Value>>) -> Value {
+pub fn reconstruct_ap1(f: Option<Box<Value>>, x0: Option<Box<Value>>) -> Value {
     Value::Ap(Ap { f, arg: x0 })
 }
 
-fn deconstruct_ap1(entry: Value) -> (Option<Box<Value>>, Option<Box<Value>>) {
+pub fn deconstruct_ap1(entry: Value) -> (Option<Box<Value>>, Option<Box<Value>>) {
     match entry {
         Value::Ap(Ap { f, arg: x0 }) => (f, x0),
         _other => panic!("It isn't ap1"),
     }
 }
 
-fn reconstruct_ap2(f: Option<Box<Value>>, x0: Option<Box<Value>>, x1: Option<Box<Value>>) -> Value {
+pub fn reconstruct_ap2(
+    f: Option<Box<Value>>,
+    x0: Option<Box<Value>>,
+    x1: Option<Box<Value>>,
+) -> Value {
     Value::Ap(Ap {
         f: Some(Box::new(Value::Ap(Ap { f, arg: x0 }))),
         arg: x1,
     })
 }
 
-fn deconstruct_ap2(entry: Value) -> (Option<Box<Value>>, Option<Box<Value>>, Option<Box<Value>>) {
+pub fn deconstruct_ap2(
+    entry: Value,
+) -> (Option<Box<Value>>, Option<Box<Value>>, Option<Box<Value>>) {
     match entry {
         Value::Ap(Ap {
             f: Some(f),
@@ -547,7 +553,7 @@ fn deconstruct_ap2(entry: Value) -> (Option<Box<Value>>, Option<Box<Value>>, Opt
     }
 }
 
-fn deconstruct_ap3(
+pub fn deconstruct_ap3(
     entry: Value,
 ) -> (
     Option<Box<Value>>,
@@ -573,7 +579,7 @@ fn deconstruct_ap3(
     }
 }
 
-fn reconstruct_ap3(
+pub fn reconstruct_ap3(
     f: Option<Box<Value>>,
     x0: Option<Box<Value>>,
     x1: Option<Box<Value>>,
@@ -586,6 +592,16 @@ fn reconstruct_ap3(
         }))),
         arg: x2,
     })
+}
+
+pub fn deconstruct_pair(value: Value) -> Option<(Value, Value)> {
+    match deconstruct_ap2(value) {
+        (Some(f), Some(x0), Some(x1)) => match (*f, *x0, *x1) {
+            (Value::F(Fun::Cons), x0, x1) => Some((x0, x1)),
+            (_f, _x0, _x1) => None,
+        },
+        (_f, _x0, _x1) => None,
+    }
 }
 
 impl From<Node> for Rule {
@@ -735,13 +751,13 @@ impl fmt::Display for Rule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::build_define_tree;
+    use crate::ast;
     use crate::parser::parse;
 
     fn rules(input: &[&str]) -> Vec<Rule> {
         input
             .iter()
-            .map(|s| Rule::from(build_define_tree(&parse(s)).unwrap()))
+            .map(|s| Rule::from(ast::build_define_tree(&parse(s)).unwrap()))
             .collect()
     }
 
@@ -751,6 +767,14 @@ mod tests {
             result.add_rule(r).unwrap();
         }
         result
+    }
+
+    fn entry(input: &str) -> Value {
+        let entry = match ast::build_subtree(&parse(input)).unwrap() {
+            (Some(entry), []) => entry,
+            (_entry, tail) => panic!("Unexpected tail {:?}", tail),
+        };
+        Value::from(entry)
     }
 
     #[test]
@@ -1045,10 +1069,21 @@ mod tests {
 
     #[test]
     fn test_cons_recursive() {
-        let mut solver = with_rules(&vec![":1 = ap ap cons ap inc 1 ap dec 1"]);
+        let mut solver = with_rules(&vec![
+            ":1 = ap ap cons ap inc 1 ap dec 1",
+            ":2 = ap ap cons 1 ap ap ap i cons ap inc 1 ap ap cons 3 nil",
+        ]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "ap ap cons 2 0"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 10)),
+            "ap ap cons 1 ap ap cons 2 ap ap cons 3 nil"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(entry("ap ap cons 1 ap inc 1"), 10)),
+            "ap ap cons 1 2"
         );
     }
 
