@@ -3,7 +3,7 @@ use crate::operand::Address;
 use std::collections::HashMap;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Solver {
     memory: HashMap<Address, Value>,
     hidden_memory: Vec<Value>,
@@ -17,6 +17,8 @@ pub enum Value {
     Ap(Ap),
     F(Fun),
 }
+
+type ValueRef = Option<Box<Value>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
@@ -66,8 +68,8 @@ pub enum Fun {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ap {
-    pub f: Option<Box<Value>>,
-    pub arg: Option<Box<Value>>,
+    pub f: ValueRef,
+    pub arg: ValueRef,
 }
 
 impl Ap {
@@ -77,16 +79,18 @@ impl Ap {
             arg: Some(_),
         } = self
         {
-            return true;
+            true
+        } else {
+            false
         }
-        return false;
     }
 
     pub fn is_partial(&self) -> bool {
         if let Ap { f: _, arg: None } = self {
-            return true;
+            true
+        } else {
+            false
         }
-        return false;
     }
 }
 
@@ -102,11 +106,7 @@ impl Value {
 
 impl Solver {
     pub fn new() -> Self {
-        Self {
-            memory: HashMap::new(),
-            hidden_memory: Vec::new(),
-            definitions: HashMap::new(),
-        }
+        Self::default()
     }
 
     pub fn get(&self, r: &Ref) -> Option<&Value> {
@@ -120,7 +120,6 @@ impl Solver {
         match r {
             Ref::Ref(addr) => {
                 self.memory.insert(addr, value);
-                ()
             }
             Ref::HiddenRef(addr) => self.hidden_memory[addr] = value,
         };
@@ -509,38 +508,32 @@ fn ap_boxed(f: Box<Value>, arg: Box<Value>) -> Value {
     })
 }
 
-fn ap_with_f(f: Option<Box<Value>>, arg: Value) -> Value {
+fn ap_with_f(f: ValueRef, arg: Value) -> Value {
     Value::Ap(Ap {
         f,
         arg: Some(Box::new(arg)),
     })
 }
 
-pub fn reconstruct_ap1(f: Option<Box<Value>>, x0: Option<Box<Value>>) -> Value {
+pub fn reconstruct_ap1(f: ValueRef, x0: ValueRef) -> Value {
     Value::Ap(Ap { f, arg: x0 })
 }
 
-pub fn deconstruct_ap1(entry: Value) -> (Option<Box<Value>>, Option<Box<Value>>) {
+pub fn deconstruct_ap1(entry: Value) -> (ValueRef, ValueRef) {
     match entry {
         Value::Ap(Ap { f, arg: x0 }) => (f, x0),
         _other => panic!("It isn't ap1"),
     }
 }
 
-pub fn reconstruct_ap2(
-    f: Option<Box<Value>>,
-    x0: Option<Box<Value>>,
-    x1: Option<Box<Value>>,
-) -> Value {
+pub fn reconstruct_ap2(f: ValueRef, x0: ValueRef, x1: ValueRef) -> Value {
     Value::Ap(Ap {
         f: Some(Box::new(Value::Ap(Ap { f, arg: x0 }))),
         arg: x1,
     })
 }
 
-pub fn deconstruct_ap2(
-    entry: Value,
-) -> (Option<Box<Value>>, Option<Box<Value>>, Option<Box<Value>>) {
+pub fn deconstruct_ap2(entry: Value) -> (ValueRef, ValueRef, ValueRef) {
     match entry {
         Value::Ap(Ap {
             f: Some(f),
@@ -553,14 +546,7 @@ pub fn deconstruct_ap2(
     }
 }
 
-pub fn deconstruct_ap3(
-    entry: Value,
-) -> (
-    Option<Box<Value>>,
-    Option<Box<Value>>,
-    Option<Box<Value>>,
-    Option<Box<Value>>,
-) {
+pub fn deconstruct_ap3(entry: Value) -> (ValueRef, ValueRef, ValueRef, ValueRef) {
     match entry {
         Value::Ap(Ap {
             f: Some(f),
@@ -579,12 +565,7 @@ pub fn deconstruct_ap3(
     }
 }
 
-pub fn reconstruct_ap3(
-    f: Option<Box<Value>>,
-    x0: Option<Box<Value>>,
-    x1: Option<Box<Value>>,
-    x2: Option<Box<Value>>,
-) -> Value {
+pub fn reconstruct_ap3(f: ValueRef, x0: ValueRef, x1: ValueRef, x2: ValueRef) -> Value {
     Value::Ap(Ap {
         f: Some(Box::new(Value::Ap(Ap {
             f: Some(Box::new(Value::Ap(Ap { f, arg: x0 }))),
@@ -779,11 +760,7 @@ mod tests {
 
     #[test]
     fn test_rules_load() {
-        let solver = with_rules(&vec![
-            ":1 = ap ap cons 1 nil",
-            ":2 = cons",
-            "nil = ap ap cons t t",
-        ]);
+        let solver = with_rules(&[":1 = ap ap cons 1 nil", ":2 = cons", "nil = ap ap cons t t"]);
         assert_eq!(
             format!("{}", solver.get(&Ref::Ref(1)).unwrap()),
             "ap ap cons 1 nil"
@@ -793,7 +770,7 @@ mod tests {
 
     #[test]
     fn test_depth_limit() {
-        let mut solver = with_rules(&vec![":1 = ap :1 :1"]);
+        let mut solver = with_rules(&[":1 = ap :1 :1"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "ap ap ap ap ap :1 :1 :1 :1 :1 :1"
@@ -802,13 +779,13 @@ mod tests {
 
     #[test]
     fn test_simple_definiton() {
-        let mut solver = with_rules(&vec!["galaxy = ap inc 1"]);
+        let mut solver = with_rules(&["galaxy = ap inc 1"]);
         assert_eq!(format!("{}", solver.deduce(Value::F(Fun::Galaxy), 10)), "2");
     }
 
     #[test]
     fn test_memoization() {
-        let mut solver = with_rules(&vec![":1 = ap ap add 1 2", ":2 = ap inc :1"]);
+        let mut solver = with_rules(&[":1 = ap ap add 1 2", ":2 = ap inc :1"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 100)),
             "4"
@@ -818,7 +795,7 @@ mod tests {
 
     #[test]
     fn test_i() {
-        let mut solver = with_rules(&vec![":1 = ap i :2", ":2 = 1", ":3 = ap ap ap i 1 :1 2"]);
+        let mut solver = with_rules(&[":1 = ap i :2", ":2 = 1", ":3 = ap ap ap i 1 :1 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 100)),
             "1"
@@ -831,7 +808,7 @@ mod tests {
 
     #[test]
     fn test_nil() {
-        let mut solver = with_rules(&vec![":1 = ap nil :2"]);
+        let mut solver = with_rules(&[":1 = ap nil :2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
             "t"
@@ -840,7 +817,7 @@ mod tests {
 
     #[test]
     fn test_k() {
-        let mut solver = with_rules(&vec![":1 = ap ap t 1 2", ":2 = ap ap t t ap inc 5"]);
+        let mut solver = with_rules(&[":1 = ap ap t 1 2", ":2 = ap ap t t ap inc 5"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
             "1"
@@ -853,7 +830,7 @@ mod tests {
 
     #[test]
     fn test_false() {
-        let mut solver = with_rules(&vec![":1 = ap ap f 1 2"]);
+        let mut solver = with_rules(&[":1 = ap ap f 1 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
             "2"
@@ -862,7 +839,7 @@ mod tests {
 
     #[test]
     fn test_s() {
-        let mut solver = with_rules(&vec![
+        let mut solver = with_rules(&[
             ":1 = ap ap ap s add inc 1",
             ":2 = ap ap ap s mul ap add 1 6",
         ]);
@@ -878,7 +855,7 @@ mod tests {
 
     #[test]
     fn test_b() {
-        let mut solver = with_rules(&vec![":1 = ap ap ap b inc dec mul"]);
+        let mut solver = with_rules(&[":1 = ap ap ap b inc dec mul"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
             "ap inc ap dec mul"
@@ -887,7 +864,7 @@ mod tests {
 
     #[test]
     fn test_c() {
-        let mut solver = with_rules(&vec![
+        let mut solver = with_rules(&[
             ":1 = ap ap ap ap c inc dec mul inc",
             ":2 = ap ap ap c add 1 2",
         ]);
@@ -903,7 +880,7 @@ mod tests {
 
     #[test]
     fn test_cons() {
-        let mut solver = with_rules(&vec![":1 = ap ap ap cons inc dec mul"]);
+        let mut solver = with_rules(&[":1 = ap ap ap cons inc dec mul"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
             "ap ap mul inc dec"
@@ -912,7 +889,7 @@ mod tests {
 
     #[test]
     fn test_add() {
-        let mut solver = with_rules(&vec![":1 = ap ap add 1 2"]);
+        let mut solver = with_rules(&[":1 = ap ap add 1 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "3"
@@ -921,7 +898,7 @@ mod tests {
 
     #[test]
     fn test_inc() {
-        let mut solver = with_rules(&vec![":1 = ap inc 2"]);
+        let mut solver = with_rules(&[":1 = ap inc 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "3"
@@ -930,7 +907,7 @@ mod tests {
 
     #[test]
     fn test_dec() {
-        let mut solver = with_rules(&vec![":1 = ap dec 2"]);
+        let mut solver = with_rules(&[":1 = ap dec 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "1"
@@ -939,7 +916,7 @@ mod tests {
 
     #[test]
     fn test_mul() {
-        let mut solver = with_rules(&vec![":1 = ap ap mul 3 2"]);
+        let mut solver = with_rules(&[":1 = ap ap mul 3 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "6"
@@ -948,7 +925,7 @@ mod tests {
 
     #[test]
     fn test_div() {
-        let mut solver = with_rules(&vec![":1 = ap ap div 5 2"]);
+        let mut solver = with_rules(&[":1 = ap ap div 5 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "2"
@@ -957,7 +934,7 @@ mod tests {
 
     #[test]
     fn test_pwr2() {
-        let mut solver = with_rules(&vec![":1 = ap pwr2 2", ":2 = ap pwr2 0"]);
+        let mut solver = with_rules(&[":1 = ap pwr2 2", ":2 = ap pwr2 0"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "4"
@@ -970,7 +947,7 @@ mod tests {
 
     #[test]
     fn test_car() {
-        let mut solver = with_rules(&vec![":1 = ap car ap ap cons 1 2"]);
+        let mut solver = with_rules(&[":1 = ap car ap ap cons 1 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "1"
@@ -979,7 +956,7 @@ mod tests {
 
     #[test]
     fn test_cdr() {
-        let mut solver = with_rules(&vec![":1 = ap cdr ap ap cons 1 2"]);
+        let mut solver = with_rules(&[":1 = ap cdr ap ap cons 1 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "2"
@@ -988,7 +965,7 @@ mod tests {
 
     #[test]
     fn test_eq() {
-        let mut solver = with_rules(&vec![
+        let mut solver = with_rules(&[
             ":1 = ap ap eq -19 -20",
             ":2 = ap ap eq -20 -20",
             ":3 = ap ap eq -21 -20",
@@ -1009,7 +986,7 @@ mod tests {
 
     #[test]
     fn test_lt() {
-        let mut solver = with_rules(&vec![
+        let mut solver = with_rules(&[
             ":1 = ap ap lt -19 -20",
             ":2 = ap ap lt -20 -20",
             ":3 = ap ap lt -21 -20",
@@ -1030,7 +1007,7 @@ mod tests {
 
     #[test]
     fn test_isnil() {
-        let mut solver = with_rules(&vec![":1 = ap isnil nil", ":2 = ap isnil ap ap cons 1 2"]);
+        let mut solver = with_rules(&[":1 = ap isnil nil", ":2 = ap isnil ap ap cons 1 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "t"
@@ -1043,7 +1020,7 @@ mod tests {
 
     #[test]
     fn test_if0() {
-        let mut solver = with_rules(&vec![":1 = ap ap ap if0 0 1 2", ":2 = ap ap ap if0 1 1 2"]);
+        let mut solver = with_rules(&[":1 = ap ap ap if0 0 1 2", ":2 = ap ap ap if0 1 1 2"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "1"
@@ -1056,7 +1033,7 @@ mod tests {
 
     #[test]
     fn test_neg() {
-        let mut solver = with_rules(&vec![":1 = ap neg 1", ":2 = ap neg -1"]);
+        let mut solver = with_rules(&[":1 = ap neg 1", ":2 = ap neg -1"]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "-1"
@@ -1069,7 +1046,7 @@ mod tests {
 
     #[test]
     fn test_cons_recursive() {
-        let mut solver = with_rules(&vec![
+        let mut solver = with_rules(&[
             ":1 = ap ap cons ap inc 1 ap dec 1",
             ":2 = ap ap cons 1 ap ap ap i cons ap inc 1 ap ap cons 3 nil",
         ]);
@@ -1089,7 +1066,7 @@ mod tests {
 
     #[test]
     fn test_cominators() {
-        let mut solver = with_rules(&vec![
+        let mut solver = with_rules(&[
             ":1 = ap ap ap s ap ap c ap eq 0 1 ap ap b ap mul 2 ap ap b pwr2 ap add -1 0",
         ]);
         assert_eq!(

@@ -14,7 +14,7 @@ pub fn modulate(val: &Modulatable) -> String {
     result
 }
 
-pub fn modulate_into(op: &Modulatable, buffer: &mut String) -> () {
+pub fn modulate_into(op: &Modulatable, buffer: &mut String) {
     match op {
         Modulatable::Num(n) => modulate_num(*n, buffer),
         Modulatable::Nil => modulate_nil(buffer),
@@ -39,7 +39,7 @@ pub fn demodulate_part(input: &str) -> (Modulatable, &str) {
     }
 }
 
-fn modulate_num(num: i64, buffer: &mut String) -> () {
+fn modulate_num(num: i64, buffer: &mut String) {
     // See https://message-from-space.readthedocs.io/en/latest/message13.html for details
     if num < 0i64 {
         buffer.push_str("10");
@@ -80,7 +80,7 @@ fn demodulate_num(input: &str) -> (Modulatable, &str) {
     }
     let mut result: i64 = 0;
     for _ in 0..len {
-        result = result << 1;
+        result <<= 1;
         result += match num.next() {
             Some('0') => 0,
             Some('1') => 1,
@@ -91,7 +91,7 @@ fn demodulate_num(input: &str) -> (Modulatable, &str) {
     (Modulatable::Num(sign * result), num.as_str())
 }
 
-fn modulate_nil(buffer: &mut String) -> () {
+fn modulate_nil(buffer: &mut String) {
     buffer.push_str("00");
 }
 
@@ -100,7 +100,7 @@ fn demodulate_nil(input: &str) -> (Modulatable, &str) {
     (Modulatable::Nil, &input[2..])
 }
 
-fn modulate_pair(left: &Modulatable, right: &Modulatable, buffer: &mut String) -> () {
+fn modulate_pair(left: &Modulatable, right: &Modulatable, buffer: &mut String) {
     buffer.push_str("11");
     modulate_into(left, buffer);
     modulate_into(right, buffer);

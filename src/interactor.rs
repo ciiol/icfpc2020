@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_stateless() {
-        let mut interactor = with_rules(&vec![
+        let mut interactor = with_rules(&[
             "galaxy = ap ap c ap ap b b ap ap b ap b ap cons 0 ap ap c ap ap b \
             b cons ap ap c cons nil ap ap c ap ap b cons ap ap c cons nil nil",
         ]);
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_statefull() {
-        let mut interactor = with_rules(&vec![
+        let mut interactor = with_rules(&[
             "galaxy = ap ap b ap b ap ap s ap ap b ap b ap cons 0 ap ap c ap ap b b \
             cons ap ap c cons nil ap ap c cons nil ap c cons",
         ]);

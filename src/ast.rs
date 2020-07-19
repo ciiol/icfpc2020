@@ -104,12 +104,12 @@ pub fn build_define_tree(ops: &[Op]) -> Result<Node, String> {
         ));
     }
     let (right, tail) = build_subtree(&tail[1..])?;
-    return match (left, right, tail) {
-        (None, _right, _tail) => Err(format!("Unexpected empty left subtree")),
-        (Some(_), None, _tail) => Err(format!("Unexpected empty right subtree")),
+    match (left, right, tail) {
+        (None, _right, _tail) => Err("Unexpected empty left subtree".to_string()),
+        (Some(_), None, _tail) => Err("Unexpected empty right subtree".to_string()),
         (Some(left), Some(right), []) => Ok(Node::Define(Define::new(left, right))),
         (Some(_left), Some(_right), tail) => Err(format!("Unexpected tail {:?}", tail)),
-    };
+    }
 }
 
 pub fn build_subtree(ops: &[Op]) -> Result<(Option<Node>, &[Op]), String> {
@@ -117,7 +117,7 @@ pub fn build_subtree(ops: &[Op]) -> Result<(Option<Node>, &[Op]), String> {
         return Ok((None, ops));
     }
     match ops[0] {
-        Op::Define => return Ok((None, ops)),
+        Op::Define => Ok((None, ops)),
         Op::Ap => {
             let (f, tail) = build_subtree(&ops[1..])?;
             let (arg, tail) = build_subtree(tail)?;

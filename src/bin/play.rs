@@ -1,9 +1,9 @@
 extern crate icfpc2020;
 
+use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead};
-use std::collections::HashMap;
 
 use icfpc2020::ast;
 use icfpc2020::interactor::{self, Interactor, Point};
@@ -24,7 +24,7 @@ const HEIGHT: u32 = 64;
 /// Representation of the application state. In this example, a box will bounce around the screen.
 struct Renderer {
     interactor: Interactor,
-    points: HashMap<Point, bool>
+    points: HashMap<Point, bool>,
 }
 
 fn main() -> Result<(), Error> {
@@ -111,7 +111,10 @@ fn main() -> Result<(), Error> {
 
 impl Renderer {
     fn new(interactor: Interactor) -> Self {
-        Self { interactor, points: HashMap::new() }
+        Self {
+            interactor,
+            points: HashMap::new(),
+        }
     }
 
     fn apply_click(&mut self, point: Point) {
@@ -139,7 +142,7 @@ impl Renderer {
             let y = (i / WIDTH as usize) as i64;
             let p = Point::new(x, y);
 
-            let rgba = if let Some(_) = self.points.get(&p) {
+            let rgba = if self.points.get(&p).is_some() {
                 [0x00, 0x00, 0x00, 0xff]
             } else {
                 [0xff, 0xff, 0xff, 0xff]
