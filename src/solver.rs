@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
-struct Solver {
+pub struct Solver {
     memory: HashMap<Address, Value>,
     hidden_memory: Vec<Value>,
     definitions: HashMap<Fun, Value>,
@@ -40,6 +40,7 @@ pub enum Fun {
     T,
     F,
     Lt,
+    Eq,
     Mod,
     Dem,
     Send,
@@ -209,11 +210,13 @@ impl Solver {
             (_, _, Some(Fun::S)) => self.apply_combinator_s(entry),
             (_, _, Some(Fun::C)) => self.apply_combinator_c(entry),
             (_, _, Some(Fun::B)) => self.apply_combinator_b(entry),
-            (_, _, Some(Fun::Cons)) => self.apply_cons(entry),
+            (_, _, Some(Fun::Cons)) => self.apply_cons_combinator(entry),
             (_, Some(Fun::Add), _) => self.apply_add(entry, depth),
+            (_, Some(Fun::Cons), _) => self.apply_cons(entry, depth),
             (_, Some(Fun::Mul), _) => self.apply_mul(entry, depth),
             (_, Some(Fun::Div), _) => self.apply_div(entry, depth),
             (_, Some(Fun::Lt), _) => self.apply_lt(entry, depth),
+            (_, Some(Fun::Eq), _) => self.apply_eq(entry, depth),
             (Some(Fun::Inc), _, _) => self.apply_inc(entry, depth),
             (Some(Fun::Dec), _, _) => self.apply_dec(entry, depth),
             (Some(Fun::Pwr2), _, _) => self.apply_pwr2(entry, depth),
@@ -287,10 +290,24 @@ impl Solver {
         }
     }
 
-    fn apply_cons(&mut self, entry: Value) -> (bool, Value) {
+    fn apply_cons_combinator(&mut self, entry: Value) -> (bool, Value) {
         match deconstruct_ap3(entry) {
             (_f, x0 @ Some(_), x1 @ Some(_), x2 @ Some(_)) => (true, reconstruct_ap2(x2, x0, x1)),
             (f, x0, x1, x2) => (false, reconstruct_ap3(f, x0, x1, x2)),
+        }
+    }
+
+    fn apply_cons(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap2(entry) {
+            (f, Some(x0), Some(x1)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                let x1 = self.deduce(*x1, depth - 1);
+                (
+                    false,
+                    reconstruct_ap2(f, Some(Box::new(x0)), Some(Box::new(x1))),
+                )
+            }
+            (f, x0, x1) => (false, reconstruct_ap2(f, x0, x1)),
         }
     }
 
@@ -344,6 +361,23 @@ impl Solver {
                 match (x0, x1) {
                     (Value::Num(n1), Value::Num(n2)) => {
                         let res = if n1 < n2 { Fun::T } else { Fun::F };
+                        (true, Value::F(res))
+                    }
+                    (x0, x1) => (false, ap(ap_with_f(f, x0), x1)),
+                }
+            }
+            (f, x0, x1) => (false, reconstruct_ap2(f, x0, x1)),
+        }
+    }
+
+    fn apply_eq(&mut self, entry: Value, depth: usize) -> (bool, Value) {
+        match deconstruct_ap2(entry) {
+            (f, Some(x0), Some(x1)) => {
+                let x0 = self.deduce(*x0, depth - 1);
+                let x1 = self.deduce(*x1, depth - 1);
+                match (x0, x1) {
+                    (Value::Num(n1), Value::Num(n2)) => {
+                        let res = if n1 == n2 { Fun::T } else { Fun::F };
                         (true, Value::F(res))
                     }
                     (x0, x1) => (false, ap(ap_with_f(f, x0), x1)),
@@ -557,7 +591,7 @@ fn reconstruct_ap3(
 impl From<Node> for Rule {
     fn from(node: Node) -> Self {
         match node {
-            Node::Eq(eq) => Self {
+            Node::Define(eq) => Self {
                 left: Value::from(*eq.left),
                 right: Value::from(*eq.right),
             },
@@ -579,6 +613,7 @@ impl From<Node> for Value {
             Node::F(ast::Fun::T) => Value::F(Fun::T),
             Node::F(ast::Fun::F) => Value::F(Fun::F),
             Node::F(ast::Fun::Lt) => Value::F(Fun::Lt),
+            Node::F(ast::Fun::Eq) => Value::F(Fun::Eq),
             Node::F(ast::Fun::Mod) => Value::F(Fun::Mod),
             Node::F(ast::Fun::Dem) => Value::F(Fun::Dem),
             Node::F(ast::Fun::Send) => Value::F(Fun::Send),
@@ -601,7 +636,7 @@ impl From<Node> for Value {
             Node::F(ast::Fun::Interact) => Value::F(Fun::Interact),
             Node::F(ast::Fun::Galaxy) => Value::F(Fun::Galaxy),
             Node::Ap(ap) => Value::Ap(Ap::from(ap)),
-            Node::Eq(_) => panic!("Don't know how to convert eq"),
+            Node::Define(_) => panic!("Don't know how to convert eq"),
         }
     }
 }
@@ -643,6 +678,7 @@ impl fmt::Display for Fun {
             Fun::T => write!(f, "t"),
             Fun::F => write!(f, "f"),
             Fun::Lt => write!(f, "lt"),
+            Fun::Eq => write!(f, "eq"),
             Fun::Mod => write!(f, "mod"),
             Fun::Dem => write!(f, "dem"),
             Fun::Send => write!(f, "send"),
@@ -699,13 +735,13 @@ impl fmt::Display for Rule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::build_eq_tree;
+    use crate::ast::build_define_tree;
     use crate::parser::parse;
 
     fn rules(input: &[&str]) -> Vec<Rule> {
         input
             .iter()
-            .map(|s| Rule::from(build_eq_tree(&parse(s)).unwrap()))
+            .map(|s| Rule::from(build_define_tree(&parse(s)).unwrap()))
             .collect()
     }
 
@@ -827,10 +863,17 @@ mod tests {
 
     #[test]
     fn test_c() {
-        let mut solver = with_rules(&vec![":1 = ap ap ap c inc dec mul"]);
+        let mut solver = with_rules(&vec![
+            ":1 = ap ap ap ap c inc dec mul inc",
+            ":2 = ap ap ap c add 1 2",
+        ]);
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 100)),
-            "ap ap inc mul dec"
+            "ap ap ap inc mul dec inc"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 100)),
+            "3"
         );
     }
 
@@ -920,6 +963,27 @@ mod tests {
     }
 
     #[test]
+    fn test_eq() {
+        let mut solver = with_rules(&vec![
+            ":1 = ap ap eq -19 -20",
+            ":2 = ap ap eq -20 -20",
+            ":3 = ap ap eq -21 -20",
+        ]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "f"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 10)),
+            "t"
+        );
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(3)), 10)),
+            "f"
+        );
+    }
+
+    #[test]
     fn test_lt() {
         let mut solver = with_rules(&vec![
             ":1 = ap ap lt -19 -20",
@@ -975,6 +1039,26 @@ mod tests {
         );
         assert_eq!(
             format!("{}", solver.deduce(Value::Ref(Ref::Ref(2)), 10)),
+            "1"
+        );
+    }
+
+    #[test]
+    fn test_cons_recursive() {
+        let mut solver = with_rules(&vec![":1 = ap ap cons ap inc 1 ap dec 1"]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
+            "ap ap cons 2 0"
+        );
+    }
+
+    #[test]
+    fn test_cominators() {
+        let mut solver = with_rules(&vec![
+            ":1 = ap ap ap s ap ap c ap eq 0 1 ap ap b ap mul 2 ap ap b pwr2 ap add -1 0",
+        ]);
+        assert_eq!(
+            format!("{}", solver.deduce(Value::Ref(Ref::Ref(1)), 10)),
             "1"
         );
     }

@@ -18,7 +18,8 @@ fn decode(token: &str) -> Op {
     }
     match token {
         "ap" => Op::Ap,
-        "=" => Op::Eq,
+        "=" => Op::Define,
+        "eq" => Op::Eq,
         "inc" => Op::Inc,
         "dec" => Op::Dec,
         "add" => Op::Add,
@@ -60,7 +61,14 @@ mod tests {
     fn test_parse() {
         assert_eq!(
             parse("ap inc :0 1 = -2"),
-            vec![Op::Ap, Op::Inc, Op::Var(0), Op::Num(1), Op::Eq, Op::Num(-2)]
+            vec![
+                Op::Ap,
+                Op::Inc,
+                Op::Var(0),
+                Op::Num(1),
+                Op::Define,
+                Op::Num(-2)
+            ]
         );
     }
 
@@ -115,6 +123,16 @@ mod tests {
     #[test]
     fn test_lt_decode() {
         assert_eq!(decode("lt"), Op::Lt)
+    }
+
+    #[test]
+    fn test_eq_decode() {
+        assert_eq!(decode("eq"), Op::Eq)
+    }
+
+    #[test]
+    fn test_define_decode() {
+        assert_eq!(decode("="), Op::Define)
     }
 
     #[test]

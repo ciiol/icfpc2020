@@ -1,4 +1,4 @@
-use icfpc2020::modulator::{demodulate, modulate, Modulatable};
+use icfpc2020::modulator::{modulate, Modulatable};
 use std::env;
 use std::io::Error;
 

@@ -4,6 +4,7 @@ pub type Address = usize;
 pub enum Op {
     Num(i64),     // message #1
     Var(Address), // message #8
+    Define,       // message #4
     Ap,           // message #17
     Eq,           // message #4
     Inc,          // message #5

@@ -3,7 +3,7 @@ use crate::operand::{Address, Op};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Ap(Ap),
-    Eq(Eq),
+    Define(Define),
     Ref(Ref),
     Num(i64),
     F(Fun),
@@ -36,14 +36,14 @@ impl Ap {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Eq {
+pub struct Define {
     pub left: Box<Node>,
     pub right: Box<Node>,
 }
 
-impl Eq {
-    pub fn new(left: Node, right: Node) -> Eq {
-        Eq {
+impl Define {
+    pub fn new(left: Node, right: Node) -> Self {
+        Self {
             left: Box::new(left),
             right: Box::new(right),
         }
@@ -60,6 +60,7 @@ pub enum Fun {
     T,
     F,
     Lt,
+    Eq,
     Mod,
     Dem,
     Send,
@@ -94,11 +95,11 @@ impl Ref {
     }
 }
 
-pub fn build_eq_tree(ops: &[Op]) -> Result<Node, String> {
+pub fn build_define_tree(ops: &[Op]) -> Result<Node, String> {
     let (left, tail) = build_subtree(ops)?;
-    if !tail.starts_with(&[Op::Eq]) {
+    if !tail.starts_with(&[Op::Define]) {
         return Err(format!(
-            "Unexpected {:?} instead of expected Eq",
+            "Unexpected {:?} instead of expected =",
             tail.get(0)
         ));
     }
@@ -106,7 +107,7 @@ pub fn build_eq_tree(ops: &[Op]) -> Result<Node, String> {
     return match (left, right, tail) {
         (None, _right, _tail) => Err(format!("Unexpected empty left subtree")),
         (Some(_), None, _tail) => Err(format!("Unexpected empty right subtree")),
-        (Some(left), Some(right), []) => Ok(Node::Eq(Eq::new(left, right))),
+        (Some(left), Some(right), []) => Ok(Node::Define(Define::new(left, right))),
         (Some(_left), Some(_right), tail) => Err(format!("Unexpected tail {:?}", tail)),
     };
 }
@@ -116,7 +117,7 @@ pub fn build_subtree(ops: &[Op]) -> Result<(Option<Node>, &[Op]), String> {
         return Ok((None, ops));
     }
     match ops[0] {
-        Op::Eq => return Ok((None, ops)),
+        Op::Define => return Ok((None, ops)),
         Op::Ap => {
             let (f, tail) = build_subtree(&ops[1..])?;
             let (arg, tail) = build_subtree(tail)?;
@@ -144,6 +145,7 @@ fn build_simple_node(op: &Op) -> Node {
         Op::T => Node::F(Fun::T),
         Op::F => Node::F(Fun::F),
         Op::Lt => Node::F(Fun::Lt),
+        Op::Eq => Node::F(Fun::Eq),
         Op::Mod => Node::F(Fun::Mod),
         Op::Dem => Node::F(Fun::Dem),
         Op::Send => Node::F(Fun::Send),
@@ -165,7 +167,7 @@ fn build_simple_node(op: &Op) -> Node {
         Op::If0 => Node::F(Fun::If0),
         Op::Interact => Node::F(Fun::Interact),
         Op::Galaxy => Node::F(Fun::Galaxy),
-        Op::Eq => panic!("Don't know how to build eq"),
+        Op::Define => panic!("Don't know how to build define"),
         Op::Ap => panic!("Don't know how to build ap"),
     }
 }
@@ -175,12 +177,12 @@ mod tests {
     use super::*;
     use crate::parser::parse;
 
-    fn build_eq(input: &str) -> Result<Node, String> {
-        build_eq_tree(&parse(input))
+    fn build_define(input: &str) -> Result<Node, String> {
+        build_define_tree(&parse(input))
     }
 
     fn eq(left: Node, right: Node) -> Node {
-        Node::Eq(Eq::new(left, right))
+        Node::Define(Define::new(left, right))
     }
 
     fn ap(f: Node, arg: Node) -> Node {
@@ -211,14 +213,17 @@ mod tests {
     fn test_parse() {
         assert_eq!(
             Ok(eq(ap_p(ap_p(ap_e())), ap_p(ap_p(ap_e())))),
-            build_eq("ap ap ap = ap ap ap")
+            build_define("ap ap ap = ap ap ap")
         );
         assert_eq!(
             Ok(eq(ap(f(Fun::Inc), r(0)), n(-2))),
-            build_eq("ap inc :0 = -2")
+            build_define("ap inc :0 = -2")
         );
-        assert_eq!(Ok(eq(ap_p(f(Fun::Inc)), n(-2))), build_eq("ap inc = -2"));
-        assert_eq!(Ok(eq(ap_e(), n(-2))), build_eq("ap = -2"));
+        assert_eq!(
+            Ok(eq(ap_p(f(Fun::Inc)), n(-2))),
+            build_define("ap inc = -2")
+        );
+        assert_eq!(Ok(eq(ap_e(), n(-2))), build_define("ap = -2"));
         assert_eq!(
             Ok(eq(
                 ap(r(200), r(0)),
@@ -227,7 +232,7 @@ mod tests {
                     ap(ap(f(Fun::Cons), n(1)), f(Fun::Nil))
                 )
             )),
-            build_eq("ap :200 :0 = ap ap ap s :1 :2 ap ap cons 1 nil")
+            build_define("ap :200 :0 = ap ap ap s :1 :2 ap ap cons 1 nil")
         );
     }
 }
